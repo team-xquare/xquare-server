@@ -55,6 +55,22 @@ func main() {
 
 	r := gin.Default()
 
+	// Restrict trusted proxies to prevent X-Forwarded-For spoofing (rate limit bypass).
+	// Set TRUSTED_PROXIES env var to a comma-separated list of trusted proxy CIDRs/IPs
+	// (e.g., "10.0.0.0/8,172.16.0.0/12"). Empty = trust nothing (direct connections only).
+	{
+		trustedProxies := os.Getenv("TRUSTED_PROXIES")
+		var proxies []string
+		for _, p := range strings.Split(trustedProxies, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				proxies = append(proxies, p)
+			}
+		}
+		if err := r.SetTrustedProxies(proxies); err != nil {
+			log.Fatalf("trusted proxies: %v", err)
+		}
+	}
+
 	// Limit request body to 1 MiB to prevent memory exhaustion via large payloads
 	r.Use(func(c *gin.Context) {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
