@@ -69,7 +69,7 @@ func Load() (*Config, error) {
 			ClientID:     requireEnv("GITHUB_CLIENT_ID"),
 			ClientSecret: requireEnv("GITHUB_CLIENT_SECRET"),
 			AppID:        getEnv("GITHUB_APP_ID", "1172114"),
-			AppSlug:      getEnv("GITHUB_APP_SLUG", "xquare-dsm"),
+			AppSlug:      getEnv("GITHUB_APP_SLUG", "xquare-infrastructure"),
 			PrivateKey:   os.Getenv("GITHUB_APP_PRIVATE_KEY"),
 		},
 		GitOps: GitOpsConfig{
