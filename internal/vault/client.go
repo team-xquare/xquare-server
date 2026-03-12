@@ -49,8 +49,8 @@ func (c *Client) GetEnv(project, app string) (map[string]string, error) {
 	return result, nil
 }
 
-// SetEnv writes env vars (full replace) to Vault KV v1
-func (c *Client) SetEnv(project, app string, vars map[string]string) error {
+// setEnvLocked writes env vars without acquiring the mutex (caller must hold c.mu).
+func (c *Client) setEnvLocked(project, app string, vars map[string]string) error {
 	path := fmt.Sprintf("%s/%s", c.mount, domain.VaultPath(project, app))
 	data := make(map[string]interface{}, len(vars))
 	for k, v := range vars {
@@ -61,6 +61,14 @@ func (c *Client) SetEnv(project, app string, vars map[string]string) error {
 		return fmt.Errorf("vault write: %w", err)
 	}
 	return nil
+}
+
+// SetEnv writes env vars (full replace) to Vault KV v1.
+// Acquires the mutex so concurrent PUT /env requests don't overwrite each other.
+func (c *Client) SetEnv(project, app string, vars map[string]string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.setEnvLocked(project, app, vars)
 }
 
 // PatchEnv merges vars into existing Vault KV v1.
@@ -76,7 +84,7 @@ func (c *Client) PatchEnv(project, app string, vars map[string]string) error {
 	for k, v := range vars {
 		existing[k] = v
 	}
-	return c.SetEnv(project, app, existing)
+	return c.setEnvLocked(project, app, existing)
 }
 
 // DeleteEnvKey removes a single key from Vault KV v1.
@@ -90,7 +98,7 @@ func (c *Client) DeleteEnvKey(project, app, key string) error {
 		return err
 	}
 	delete(existing, key)
-	return c.SetEnv(project, app, existing)
+	return c.setEnvLocked(project, app, existing)
 }
 
 // InitEnv creates an empty secret at the Vault path (needed before VaultStaticSecret syncs)

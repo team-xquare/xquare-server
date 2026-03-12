@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -131,7 +132,7 @@ func (c *Client) GetUser(ctx context.Context, accessToken string) (*User, error)
 
 // GetUserByUsername fetches public GitHub user info by username (no auth required).
 func (c *Client) GetUserByUsername(ctx context.Context, username string) (*User, error) {
-	req, _ := http.NewRequestWithContext(ctx, "GET", apiBase+"/users/"+username, nil)
+	req, _ := http.NewRequestWithContext(ctx, "GET", apiBase+"/users/"+url.PathEscape(username), nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -161,8 +162,8 @@ func (e *ErrAppNotInstalled) Error() string {
 
 // GetBranchSHA returns the latest commit SHA for a branch.
 func (c *Client) GetBranchSHA(ctx context.Context, owner, repo, branch string) (string, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/branches/%s", apiBase, owner, repo, branch)
-	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	apiURL := fmt.Sprintf("%s/repos/%s/%s/branches/%s", apiBase, url.PathEscape(owner), url.PathEscape(repo), url.PathEscape(branch))
+	req, _ := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -188,8 +189,8 @@ func (c *Client) GetRepoInstallationID(ctx context.Context, owner, repo string) 
 		return "", fmt.Errorf("app jwt: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/%s/installation", apiBase, owner, repo)
-	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	apiURL := fmt.Sprintf("%s/repos/%s/%s/installation", apiBase, url.PathEscape(owner), url.PathEscape(repo))
+	req, _ := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	req.Header.Set("Authorization", "Bearer "+appToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
