@@ -97,12 +97,10 @@ func (h *AddonHandler) Connection(c *gin.Context) {
 	port := domain.AddonPort(addon.Type)
 
 	c.JSON(http.StatusOK, gin.H{
-		"name":        addon.Name,
-		"type":        addon.Type,
-		"host":        addon.Name + "." + domain.Namespace(project) + ".svc.cluster.local",
-		"port":        port,
-		"tunnel_host": "xquare-remote-access-" + project + ".dsmhs.kr",
-		"tunnel_port": port,
-		"password":    password,
+		"name":     addon.Name,
+		"type":     addon.Type,
+		"host":     "xquare-remote-access-" + project + ".dsmhs.kr",
+		"port":     port,
+		"password": password,
 	})
 }

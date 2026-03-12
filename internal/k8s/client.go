@@ -41,25 +41,23 @@ func NewClient(cfg *config.K8sConfig) (*Client, error) {
 
 // AppStatus represents the deployment status of an application
 type AppStatus struct {
-	Name     string    `json:"name"`
-	Status   string    `json:"status"` // Running, Pending, Failed, NotDeployed
-	Replicas Replicas  `json:"replicas"`
-	Hash     string    `json:"hash"`
-	Pods     []PodInfo `json:"pods"`
+	Name      string         `json:"name"`
+	Status    string         `json:"status"` // running, pending, failed, stopped, not_deployed
+	Scale     Scale          `json:"scale"`
+	Version   string         `json:"version"`
+	Instances []InstanceInfo `json:"instances"`
 }
 
-type Replicas struct {
+type Scale struct {
 	Desired int32 `json:"desired"`
-	Ready   int32 `json:"ready"`
-	Updated int32 `json:"updated"`
+	Running int32 `json:"running"`
 }
 
-type PodInfo struct {
-	Name         string `json:"name"`
-	Phase        string `json:"phase"`
-	Ready        bool   `json:"ready"`
-	RestartCount int32  `json:"restartCount"`
-	StartTime    string `json:"startTime,omitempty"`
+type InstanceInfo struct {
+	Status   string `json:"status"`
+	Ready    bool   `json:"ready"`
+	Restarts int32  `json:"restarts"`
+	Since    string `json:"since,omitempty"`
 }
 
 // GetAppStatus returns the K8s deployment status for an app
@@ -69,7 +67,7 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 	dep, err := c.cs.AppsV1().Deployments(ns).Get(ctx, app, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return &AppStatus{Name: app, Status: "NotDeployed"}, nil
+			return &AppStatus{Name: app, Status: "not_deployed"}, nil
 		}
 		return nil, fmt.Errorf("get deployment: %w", err)
 	}
@@ -84,23 +82,23 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 		}
 	}
 
-	status := "Pending"
+	status := "pending"
 	if dep.Status.ReadyReplicas == dep.Status.Replicas && dep.Status.Replicas > 0 {
-		status = "Running"
+		status = "running"
 	} else if dep.Status.Replicas == 0 {
-		status = "Stopped"
+		status = "stopped"
 	}
 	for _, cond := range dep.Status.Conditions {
 		if cond.Type == "Available" && cond.Status == "False" && dep.Status.ReadyReplicas == 0 {
-			status = "Failed"
+			status = "failed"
 		}
 	}
 
-	// Get pods
+	// Get instances (pods)
 	pods, _ := c.cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", app),
 	})
-	var podInfos []PodInfo
+	var instances []InstanceInfo
 	for _, pod := range pods.Items {
 		ready := false
 		var restarts int32
@@ -110,28 +108,23 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 				restarts = cs.RestartCount
 			}
 		}
-		pi := PodInfo{
-			Name:         pod.Name,
-			Phase:        string(pod.Status.Phase),
-			Ready:        ready,
-			RestartCount: restarts,
+		inst := InstanceInfo{
+			Status:   strings.ToLower(string(pod.Status.Phase)),
+			Ready:    ready,
+			Restarts: restarts,
 		}
 		if pod.Status.StartTime != nil {
-			pi.StartTime = pod.Status.StartTime.UTC().Format("2006-01-02T15:04:05Z")
+			inst.Since = pod.Status.StartTime.UTC().Format("2006-01-02T15:04:05Z")
 		}
-		podInfos = append(podInfos, pi)
+		instances = append(instances, inst)
 	}
 
 	return &AppStatus{
-		Name:   app,
-		Status: status,
-		Replicas: Replicas{
-			Desired: dep.Status.Replicas,
-			Ready:   dep.Status.ReadyReplicas,
-			Updated: dep.Status.UpdatedReplicas,
-		},
-		Hash: hash,
-		Pods: podInfos,
+		Name:    app,
+		Status:  status,
+		Scale:   Scale{Desired: dep.Status.Replicas, Running: dep.Status.ReadyReplicas},
+		Version: hash,
+		Instances: instances,
 	}, nil
 }
 

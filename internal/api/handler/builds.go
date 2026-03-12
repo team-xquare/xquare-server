@@ -46,7 +46,7 @@ func (h *BuildsHandler) StreamLogs(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "no builds found"})
 			return
 		}
-		workflowName = wfs[0].Name
+		workflowName = wfs[0].ID
 	}
 
 	if websocket.IsWebSocketUpgrade(c.Request) {

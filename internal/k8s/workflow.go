@@ -30,10 +30,10 @@ type WorkflowClient struct {
 	cs  *Client
 }
 
-// WorkflowInfo represents a CI build workflow
+// WorkflowInfo represents a CI build
 type WorkflowInfo struct {
-	Name      string `json:"name"`
-	Phase     string `json:"phase"`    // Pending, Running, Succeeded, Failed
+	ID        string `json:"id"`
+	Status    string `json:"status"` // pending, running, success, failed
 	StartedAt string `json:"startedAt,omitempty"`
 	Message   string `json:"message,omitempty"`
 }
@@ -69,26 +69,37 @@ func (wc *WorkflowClient) ListWorkflows(ctx context.Context, project, app string
 
 	var workflows []WorkflowInfo
 	for _, item := range list.Items {
-		name := item.GetName()
-		phase := "Unknown"
+		id := item.GetName()
+		status := "unknown"
 		startedAt := ""
 		message := ""
 
-		if status, ok := item.Object["status"].(map[string]any); ok {
-			if p, ok := status["phase"].(string); ok {
-				phase = p
+		if wfStatus, ok := item.Object["status"].(map[string]any); ok {
+			if p, ok := wfStatus["phase"].(string); ok {
+				switch p {
+				case "Succeeded":
+					status = "success"
+				case "Running":
+					status = "running"
+				case "Failed", "Error":
+					status = "failed"
+				case "Pending":
+					status = "pending"
+				default:
+					status = strings.ToLower(p)
+				}
 			}
-			if s, ok := status["startedAt"].(string); ok {
+			if s, ok := wfStatus["startedAt"].(string); ok {
 				startedAt = s
 			}
-			if m, ok := status["message"].(string); ok {
+			if m, ok := wfStatus["message"].(string); ok {
 				message = m
 			}
 		}
 
 		workflows = append(workflows, WorkflowInfo{
-			Name:      name,
-			Phase:     phase,
+			ID:        id,
+			Status:    status,
 			StartedAt: startedAt,
 			Message:   message,
 		})
