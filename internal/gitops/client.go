@@ -184,6 +184,21 @@ func (c *Client) UpdateApplication(project string, app domain.Application) error
 	}, fmt.Sprintf("feat: update application %s in %s", app.Name, project))
 }
 
+// UpdateApplicationHash updates only the deploy hash for an app (used by redeploy)
+func (c *Client) UpdateApplicationHash(project, appName, hash string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.retryUpdate(project, func(p *domain.Project) error {
+		for i, a := range p.Applications {
+			if a.Name == appName {
+				p.Applications[i].GitHub.Hash = hash
+				return nil
+			}
+		}
+		return fmt.Errorf("application %q not found in project %q", appName, project)
+	}, fmt.Sprintf("feat: redeploy %s in %s @ %s", appName, project, hash[:8]))
+}
+
 // DeleteApplication removes an application from the project
 func (c *Client) DeleteApplication(project, appName string) error {
 	c.mu.Lock()

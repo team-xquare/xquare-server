@@ -197,10 +197,7 @@ func (h *AppHandler) Redeploy(c *gin.Context) {
 		return
 	}
 
-	updated := *target
-	updated.GitHub.Hash = sha
-
-	if err := h.gitops.UpdateApplication(project, updated); err != nil {
+	if err := h.gitops.UpdateApplicationHash(project, app, sha); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
