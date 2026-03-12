@@ -116,7 +116,7 @@ func (c *Client) writeAllowedUsers(actor string, f *allowedUsersFile) error {
 	if _, err := wt.Add("allowed-users.yaml"); err != nil {
 		return err
 	}
-	return c.commit(repo, fmt.Sprintf("feat: update allowlist [actor: %s]", actor))
+	return c.commit(repo, fmt.Sprintf("feat: update allowlist [actor: %s]", sanitizeCommitToken(actor)))
 }
 
 // AllowedUserIDs reads allowed-users.yaml and returns the set of allowed GitHub user IDs.
@@ -274,7 +274,7 @@ func (c *Client) CreateProject(name string, owner domain.Owner, actor string) er
 		Applications: []domain.Application{},
 		Addons:       []domain.Addon{},
 	}
-	return c.writeAndPush(repo, name, &p, fmt.Sprintf("feat: create project %s [actor: %s]", name, actor))
+	return c.writeAndPush(repo, name, &p, fmt.Sprintf("feat: create project %s [actor: %s]", name, sanitizeCommitToken(actor)))
 }
 
 // AddProjectMember adds a GitHub user as a project owner (identified by ID).
@@ -291,7 +291,7 @@ func (c *Client) AddProjectMember(project string, owner domain.Owner, actor stri
 		}
 		p.Owners = append(p.Owners, owner)
 		return nil
-	}, fmt.Sprintf("feat: add member %s to project %s [actor: %s]", owner.Username, project, actor))
+	}, fmt.Sprintf("feat: add member %s to project %s [actor: %s]", sanitizeCommitToken(owner.Username), project, sanitizeCommitToken(actor)))
 }
 
 // RemoveProjectMember removes a project owner by GitHub ID.
@@ -307,7 +307,7 @@ func (c *Client) RemoveProjectMember(project string, githubID int64, targetUsern
 		}
 		p.Owners = owners
 		return nil
-	}, fmt.Sprintf("feat: remove member %s from project %s [actor: %s]", targetUsername, project, actor))
+	}, fmt.Sprintf("feat: remove member %s from project %s [actor: %s]", sanitizeCommitToken(targetUsername), project, sanitizeCommitToken(actor)))
 }
 
 // DeleteProject removes projects/{name}.yaml and pushes
@@ -323,7 +323,7 @@ func (c *Client) DeleteProject(name, actor string) error {
 	if _, err := wt.Remove(relPath); err != nil {
 		return fmt.Errorf("remove: %w", err)
 	}
-	return c.commit(repo, fmt.Sprintf("feat: delete project %s [actor: %s]", name, actor))
+	return c.commit(repo, fmt.Sprintf("feat: delete project %s [actor: %s]", name, sanitizeCommitToken(actor)))
 }
 
 // AddApplication adds an application to projects/{project}.yaml and pushes
@@ -338,7 +338,7 @@ func (c *Client) AddApplication(project string, app domain.Application, actor st
 		}
 		p.Applications = append(p.Applications, app)
 		return nil
-	}, fmt.Sprintf("feat: add application %s to %s [actor: %s]", app.Name, project, actor))
+	}, fmt.Sprintf("feat: add application %s to %s [actor: %s]", app.Name, project, sanitizeCommitToken(actor)))
 }
 
 // UpdateApplication updates an existing application
@@ -355,7 +355,7 @@ func (c *Client) UpdateApplication(project string, app domain.Application, actor
 			}
 		}
 		return fmt.Errorf("application %q not found in project %q", app.Name, project)
-	}, fmt.Sprintf("feat: update application %s in %s [actor: %s]", app.Name, project, actor))
+	}, fmt.Sprintf("feat: update application %s in %s [actor: %s]", app.Name, project, sanitizeCommitToken(actor)))
 }
 
 // DeleteApplication removes an application from the project
@@ -370,7 +370,7 @@ func (c *Client) DeleteApplication(project, appName, actor string) error {
 			}
 		}
 		return fmt.Errorf("application %q not found", appName)
-	}, fmt.Sprintf("feat: delete application %s from %s [actor: %s]", appName, project, actor))
+	}, fmt.Sprintf("feat: delete application %s from %s [actor: %s]", appName, project, sanitizeCommitToken(actor)))
 }
 
 // AddAddon adds an addon to the project
@@ -385,7 +385,7 @@ func (c *Client) AddAddon(project string, addon domain.Addon, actor string) erro
 		}
 		p.Addons = append(p.Addons, addon)
 		return nil
-	}, fmt.Sprintf("feat: add addon %s to %s [actor: %s]", addon.Name, project, actor))
+	}, fmt.Sprintf("feat: add addon %s to %s [actor: %s]", addon.Name, project, sanitizeCommitToken(actor)))
 }
 
 // DeleteAddon removes an addon from the project
@@ -400,7 +400,7 @@ func (c *Client) DeleteAddon(project, addonName, actor string) error {
 			}
 		}
 		return fmt.Errorf("addon %q not found", addonName)
-	}, fmt.Sprintf("feat: delete addon %s from %s [actor: %s]", addonName, project, actor))
+	}, fmt.Sprintf("feat: delete addon %s from %s [actor: %s]", addonName, project, sanitizeCommitToken(actor)))
 }
 
 // CheckDomainConflict checks if a domain is already used across all projects
@@ -485,6 +485,17 @@ func (c *Client) writeAndPush(repo *git.Repository, project string, p *domain.Pr
 		return err
 	}
 	return c.commit(repo, commitMsg)
+}
+
+// sanitizeCommitToken strips newlines and control characters from user-supplied
+// strings embedded in commit messages to prevent log injection.
+func sanitizeCommitToken(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' || r < 0x20 {
+			return '_'
+		}
+		return r
+	}, s)
 }
 
 func (c *Client) commit(repo *git.Repository, msg string) error {
