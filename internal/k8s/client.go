@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -120,10 +120,10 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 	}
 
 	return &AppStatus{
-		Name:    app,
-		Status:  status,
-		Scale:   Scale{Desired: dep.Status.Replicas, Running: dep.Status.ReadyReplicas},
-		Version: hash,
+		Name:      app,
+		Status:    status,
+		Scale:     Scale{Desired: dep.Status.Replicas, Running: dep.Status.ReadyReplicas},
+		Version:   hash,
 		Instances: instances,
 	}, nil
 }

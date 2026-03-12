@@ -42,7 +42,7 @@ func main() {
 
 	// Init handlers
 	authH := handler.NewAuthHandler(githubClient, cfg)
-	projectH := handler.NewProjectHandler(gitopsClient, vaultClient, cfg.JWT.AdminUsers)
+	projectH := handler.NewProjectHandler(gitopsClient, vaultClient, githubClient, cfg.JWT.AdminUsers)
 	appH := handler.NewAppHandler(gitopsClient, k8sClient, vaultClient, wfClient)
 	envH := handler.NewEnvHandler(vaultClient)
 	addonH := handler.NewAddonHandler(gitopsClient, k8sClient)

@@ -19,11 +19,11 @@ import (
 const pullCacheTTL = 5 * time.Second
 
 type Client struct {
-	cfg       *config.GitOpsConfig
-	repoURL   string
-	repoDir   string
-	mu        sync.Mutex
-	lastPull  time.Time
+	cfg      *config.GitOpsConfig
+	repoURL  string
+	repoDir  string
+	mu       sync.Mutex
+	lastPull time.Time
 }
 
 func NewClient(cfg *config.GitOpsConfig) *Client {
@@ -121,7 +121,7 @@ func (c *Client) readProject(name string) (*domain.Project, error) {
 }
 
 // CreateProject creates a new empty projects/{name}.yaml with the creator as first owner.
-func (c *Client) CreateProject(name, ownerUsername string) error {
+func (c *Client) CreateProject(name string, owner domain.Owner) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	repo, err := c.ensureRepoFresh(true)
@@ -133,42 +133,44 @@ func (c *Client) CreateProject(name, ownerUsername string) error {
 		return fmt.Errorf("project %q already exists", name)
 	}
 	p := domain.Project{
-		Owners:       []string{ownerUsername},
+		Owners:       []domain.Owner{owner},
 		Applications: []domain.Application{},
 		Addons:       []domain.Addon{},
 	}
 	return c.writeAndPush(repo, name, &p, fmt.Sprintf("feat: create project %s", name))
 }
 
-// AddProjectMember adds a GitHub username as a project owner.
-func (c *Client) AddProjectMember(project, username string) error {
+// AddProjectMember adds a GitHub user as a project owner (identified by ID).
+func (c *Client) AddProjectMember(project string, owner domain.Owner) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
-		for _, o := range p.Owners {
-			if o == username {
-				return nil // already a member, no-op
+		for i, o := range p.Owners {
+			if o.ID == owner.ID {
+				// already a member — update username in case it changed
+				p.Owners[i].Username = owner.Username
+				return nil
 			}
 		}
-		p.Owners = append(p.Owners, username)
+		p.Owners = append(p.Owners, owner)
 		return nil
-	}, fmt.Sprintf("feat: add member %s to project %s", username, project))
+	}, fmt.Sprintf("feat: add member %s to project %s", owner.Username, project))
 }
 
-// RemoveProjectMember removes a GitHub username from project owners.
-func (c *Client) RemoveProjectMember(project, username string) error {
+// RemoveProjectMember removes a project owner by GitHub ID.
+func (c *Client) RemoveProjectMember(project string, githubID int64) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
 		owners := p.Owners[:0]
 		for _, o := range p.Owners {
-			if o != username {
+			if o.ID != githubID {
 				owners = append(owners, o)
 			}
 		}
 		p.Owners = owners
 		return nil
-	}, fmt.Sprintf("feat: remove member %s from project %s", username, project))
+	}, fmt.Sprintf("feat: remove member %d from project %s", githubID, project))
 }
 
 // DeleteProject removes projects/{name}.yaml and pushes
@@ -217,21 +219,6 @@ func (c *Client) UpdateApplication(project string, app domain.Application) error
 		}
 		return fmt.Errorf("application %q not found in project %q", app.Name, project)
 	}, fmt.Sprintf("feat: update application %s in %s", app.Name, project))
-}
-
-// UpdateApplicationHash updates only the deploy hash for an app (used by redeploy)
-func (c *Client) UpdateApplicationHash(project, appName, hash string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.retryUpdate(project, func(p *domain.Project) error {
-		for i, a := range p.Applications {
-			if a.Name == appName {
-				p.Applications[i].GitHub.Hash = hash
-				return nil
-			}
-		}
-		return fmt.Errorf("application %q not found in project %q", appName, project)
-	}, fmt.Sprintf("feat: redeploy %s in %s @ %s", appName, project, hash[:8]))
 }
 
 // DeleteApplication removes an application from the project

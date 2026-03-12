@@ -1,16 +1,23 @@
 package domain
 
+// Owner represents a project owner identified by their immutable GitHub ID.
+// Username is cached for display only and may be stale if the user renames.
+type Owner struct {
+	ID       int64  `yaml:"id" json:"id"`
+	Username string `yaml:"username" json:"username"`
+}
+
 // Project represents the full projects/{name}.yaml
 type Project struct {
-	Owners       []string      `yaml:"owners,omitempty" json:"owners,omitempty"`
+	Owners       []Owner       `yaml:"owners,omitempty" json:"owners,omitempty"`
 	Applications []Application `yaml:"applications" json:"applications"`
 	Addons       []Addon       `yaml:"addons,omitempty" json:"addons,omitempty"`
 }
 
-// HasAccess returns true if the given GitHub username is an owner of this project.
-func (p *Project) HasAccess(username string) bool {
+// HasAccess returns true if the given GitHub ID is an owner of this project.
+func (p *Project) HasAccess(githubID int64) bool {
 	for _, o := range p.Owners {
-		if o == username {
+		if o.ID == githubID {
 			return true
 		}
 	}

@@ -7,12 +7,12 @@ import (
 )
 
 type Config struct {
-	Server  ServerConfig
-	JWT     JWTConfig
-	GitHub  GitHubConfig
-	GitOps  GitOpsConfig
-	Vault   VaultConfig
-	K8s     K8sConfig
+	Server ServerConfig
+	JWT    JWTConfig
+	GitHub GitHubConfig
+	GitOps GitOpsConfig
+	Vault  VaultConfig
+	K8s    K8sConfig
 }
 
 type ServerConfig struct {
@@ -21,8 +21,8 @@ type ServerConfig struct {
 
 type JWTConfig struct {
 	Secret     string
-	AccessExp  int // hours
-	RefreshExp int // days
+	AccessExp  int      // hours
+	RefreshExp int      // days
 	AdminUsers []string // GitHub usernames with full access (comma-separated ADMIN_GITHUB_USERS)
 }
 
@@ -34,10 +34,10 @@ type GitHubConfig struct {
 }
 
 type GitOpsConfig struct {
-	Token    string
+	Token     string
 	RepoOwner string
 	RepoName  string
-	Branch   string
+	Branch    string
 }
 
 type VaultConfig struct {

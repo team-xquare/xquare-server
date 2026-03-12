@@ -13,8 +13,8 @@ import (
 )
 
 type AuthHandler struct {
-	gh        *github.Client
-	cfg       *config.Config
+	gh  *github.Client
+	cfg *config.Config
 }
 
 func NewAuthHandler(gh *github.Client, cfg *config.Config) *AuthHandler {
