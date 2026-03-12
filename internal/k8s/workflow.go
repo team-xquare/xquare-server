@@ -50,10 +50,16 @@ func NewWorkflowClient(cfg *config.K8sConfig, k8sClient *Client) (*WorkflowClien
 }
 
 // TriggerCI creates a new Argo Workflow to build and deploy the app.
-// The workflow references the existing WorkflowTemplate ({app}-ci-pipeline-template).
-func (wc *WorkflowClient) TriggerCI(ctx context.Context, project, app string) (string, error) {
+// sha is the git commit SHA to build; if non-empty it is passed as a push event
+// so the workflow template skips its own SHA resolution logic.
+func (wc *WorkflowClient) TriggerCI(ctx context.Context, project, app, sha string) (string, error) {
 	ns := domain.Namespace(project)
 	templateName := app + "-ci-pipeline-template"
+
+	eventType := "manual"
+	if sha != "" {
+		eventType = "push"
+	}
 
 	workflow := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -73,8 +79,8 @@ func (wc *WorkflowClient) TriggerCI(ctx context.Context, project, app string) (s
 				},
 				"arguments": map[string]any{
 					"parameters": []any{
-						map[string]any{"name": "github-event-type", "value": "manual"},
-						map[string]any{"name": "github-sha", "value": ""},
+						map[string]any{"name": "github-event-type", "value": eventType},
+						map[string]any{"name": "github-sha", "value": sha},
 					},
 				},
 				"podGC": map[string]any{

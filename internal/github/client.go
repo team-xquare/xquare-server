@@ -150,6 +150,27 @@ func (e *ErrAppNotInstalled) Error() string {
 	return fmt.Sprintf("GitHub App not installed on %s/%s\n\nInstall it at: %s", e.Owner, e.Repo, e.InstallURL)
 }
 
+// GetBranchSHA returns the latest commit SHA for a branch.
+func (c *Client) GetBranchSHA(ctx context.Context, owner, repo, branch string) (string, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/branches/%s", apiBase, owner, repo, branch)
+	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Commit struct {
+			SHA string `json:"sha"`
+		} `json:"commit"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+	return result.Commit.SHA, nil
+}
+
 // GetRepoInstallationID returns the GitHub App installation ID for a repo.
 // Returns ErrAppNotInstalled if the app is not installed.
 func (c *Client) GetRepoInstallationID(ctx context.Context, owner, repo string) (string, error) {

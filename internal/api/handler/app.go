@@ -174,7 +174,18 @@ func (h *AppHandler) Redeploy(c *gin.Context) {
 		return
 	}
 
-	name, err := h.wf.TriggerCI(c.Request.Context(), project, app)
+	// Resolve current SHA from GitHub so the workflow template takes the fast path
+	// (github-event-type=push) and skips the sh process-substitution JWT code.
+	p, _ := c.Get("project")
+	sha := ""
+	for _, a := range p.(*domain.Project).Applications {
+		if a.Name == app {
+			sha, _ = h.github.GetBranchSHA(c.Request.Context(), a.GitHub.Owner, a.GitHub.Repo, a.GitHub.Branch)
+			break
+		}
+	}
+
+	name, err := h.wf.TriggerCI(c.Request.Context(), project, app, sha)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
