@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -9,6 +10,20 @@ import (
 	"github.com/team-xquare/xquare-server/internal/config"
 	"github.com/team-xquare/xquare-server/internal/domain"
 )
+
+// ErrEnvTooLarge is returned when total env var size exceeds MaxEnvTotalBytes.
+var ErrEnvTooLarge = errors.New("env vars exceed 1 MiB total size limit")
+
+// MaxEnvTotalBytes is the maximum combined size (keys + values) for one app's env vars.
+const MaxEnvTotalBytes = 1 * 1024 * 1024 // 1 MiB
+
+func totalEnvSize(envs map[string]string) int {
+	n := 0
+	for k, v := range envs {
+		n += len(k) + len(v)
+	}
+	return n
+}
 
 type Client struct {
 	client *vaultapi.Client
@@ -68,11 +83,16 @@ func (c *Client) setEnvLocked(project, app string, vars map[string]string) error
 func (c *Client) SetEnv(project, app string, vars map[string]string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if totalEnvSize(vars) > MaxEnvTotalBytes {
+		return ErrEnvTooLarge
+	}
 	return c.setEnvLocked(project, app, vars)
 }
 
 // PatchEnv merges vars into existing Vault KV v1.
-// Uses a mutex to prevent TOCTOU race conditions on concurrent PATCH requests.
+// The size check is performed INSIDE the mutex to prevent TOCTOU: two concurrent
+// PATCH requests could both pass a handler-level size check (both reading stale
+// state), then write combined values that exceed the limit.
 func (c *Client) PatchEnv(project, app string, vars map[string]string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -83,6 +103,9 @@ func (c *Client) PatchEnv(project, app string, vars map[string]string) error {
 	}
 	for k, v := range vars {
 		existing[k] = v
+	}
+	if totalEnvSize(existing) > MaxEnvTotalBytes {
+		return ErrEnvTooLarge
 	}
 	return c.setEnvLocked(project, app, existing)
 }

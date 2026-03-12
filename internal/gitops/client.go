@@ -190,8 +190,9 @@ func (c *Client) AddAllowedUser(actor string, user AllowedUser) error {
 	return c.writeAllowedUsers(actor, f)
 }
 
-// RemoveAllowedUser removes a user from the allowlist by username.
-func (c *Client) RemoveAllowedUser(actor, username string) error {
+// RemoveAllowedUser removes a user from the allowlist by GitHub ID.
+// Matching by immutable ID prevents confusion if a user renames their GitHub account.
+func (c *Client) RemoveAllowedUser(actor string, githubID int64) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, err := c.ensureRepo(); err != nil {
@@ -202,19 +203,19 @@ func (c *Client) RemoveAllowedUser(actor, username string) error {
 		return err
 	}
 	if f == nil {
-		return fmt.Errorf("user %q not found in allowlist", username)
+		return fmt.Errorf("user (id=%d) not found in allowlist", githubID)
 	}
 	filtered := f.Users[:0]
 	found := false
 	for _, u := range f.Users {
-		if u.Username == username {
+		if u.ID == githubID {
 			found = true
 			continue
 		}
 		filtered = append(filtered, u)
 	}
 	if !found {
-		return fmt.Errorf("user %q not found in allowlist", username)
+		return fmt.Errorf("user (id=%d) not found in allowlist", githubID)
 	}
 	f.Users = filtered
 	return c.writeAllowedUsers(actor, f)

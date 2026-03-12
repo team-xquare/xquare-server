@@ -25,6 +25,10 @@ func NewBuildsHandler(wf *k8s.WorkflowClient) *BuildsHandler {
 
 // GET /projects/:project/apps/:app/builds
 func (h *BuildsHandler) List(c *gin.Context) {
+	if h.wf == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "build logs unavailable: workflow client not initialized"})
+		return
+	}
 	project := c.Param("project")
 	app := c.Param("app")
 

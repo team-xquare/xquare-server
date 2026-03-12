@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -8,18 +9,6 @@ import (
 	"github.com/team-xquare/xquare-server/internal/domain"
 	"github.com/team-xquare/xquare-server/internal/vault"
 )
-
-// maxEnvTotalBytes is the maximum combined size (keys + values) of all env vars
-// for a single app. Prevents unbounded Vault secret growth via repeated PATCHes.
-const maxEnvTotalBytes = 1 * 1024 * 1024 // 1 MiB
-
-func totalEnvSize(envs map[string]string) int {
-	n := 0
-	for k, v := range envs {
-		n += len(k) + len(v)
-	}
-	return n
-}
 
 type EnvHandler struct {
 	vault *vault.Client
@@ -36,7 +25,7 @@ func (h *EnvHandler) Get(c *gin.Context) {
 
 	envs, err := h.vault.GetEnv(project, app)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve environment variables"})
 		return
 	}
 	c.JSON(http.StatusOK, envs)
@@ -60,20 +49,23 @@ func (h *EnvHandler) Set(c *gin.Context) {
 			return
 		}
 	}
-	if totalEnvSize(envs) > maxEnvTotalBytes {
-		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "env vars exceed 1 MiB total size limit"})
-		return
-	}
 
 	if err := h.vault.SetEnv(project, app, envs); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, vault.ErrEnvTooLarge) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to set environment variables"})
 		return
 	}
 	c.JSON(http.StatusOK, envs)
 }
 
 // PATCH /projects/:project/apps/:app/env
-// Partial update — merges with existing keys
+// Partial update — merges with existing keys.
+// The 1 MiB total size cap is enforced INSIDE vault.PatchEnv (under its mutex)
+// to prevent a TOCTOU race where two concurrent PATCHes both pass a pre-check
+// but their combined writes exceed the limit.
 func (h *EnvHandler) Patch(c *gin.Context) {
 	project := c.Param("project")
 	app := c.Param("app")
@@ -91,26 +83,12 @@ func (h *EnvHandler) Patch(c *gin.Context) {
 		}
 	}
 
-	// Read current state and check total size after merge before writing
-	current, err := h.vault.GetEnv(project, app)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	merged := make(map[string]string, len(current)+len(patch))
-	for k, v := range current {
-		merged[k] = v
-	}
-	for k, v := range patch {
-		merged[k] = v
-	}
-	if totalEnvSize(merged) > maxEnvTotalBytes {
-		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "env vars exceed 1 MiB total size limit after merge"})
-		return
-	}
-
 	if err := h.vault.PatchEnv(project, app, patch); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, vault.ErrEnvTooLarge) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update environment variables"})
 		return
 	}
 
@@ -135,7 +113,7 @@ func (h *EnvHandler) DeleteKey(c *gin.Context) {
 	}
 
 	if err := h.vault.DeleteEnvKey(project, app, key); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete environment variable"})
 		return
 	}
 	c.Status(http.StatusNoContent)
