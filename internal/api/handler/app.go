@@ -221,6 +221,16 @@ func (h *AppHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Verify the authenticated user belongs to the repo's owner (org or personal account).
+	// Prevents a user from claiming a CI target on a repository they don't control.
+	if !h.isAdmin(c.GetInt64("githubId")) {
+		if err := h.github.VerifyRepoAccess(c.Request.Context(), installID, app.GitHub.Owner, app.GitHub.Repo, c.GetString("username")); err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
 	app.GitHub.InstallationID = installID
 
 	// Validate endpoints: block reserved infrastructure domains
@@ -323,6 +333,15 @@ func (h *AppHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Same ownership check as Create: prevent pointing an app at a repo the user doesn't control.
+	if !h.isAdmin(c.GetInt64("githubId")) {
+		if err := h.github.VerifyRepoAccess(c.Request.Context(), installID, updated.GitHub.Owner, updated.GitHub.Repo, c.GetString("username")); err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
 	updated.GitHub.InstallationID = installID
 
 	// Preserve hash (server-managed, set by CI)

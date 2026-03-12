@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -196,8 +199,28 @@ func main() {
 		}
 	}
 
-	log.Printf("starting xquare-server on :%s", cfg.Server.Port)
-	if err := r.Run(":" + cfg.Server.Port); err != nil {
-		log.Fatalf("server: %v", err)
+	srv := &http.Server{
+		Addr:    ":" + cfg.Server.Port,
+		Handler: r,
 	}
+
+	go func() {
+		log.Printf("starting xquare-server on :%s", cfg.Server.Port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Printf("shutting down server...")
+
+	// Allow 30s for in-flight requests (log streams, gitops writes) to complete.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("server forced shutdown: %v", err)
+	}
+	log.Printf("server stopped")
 }

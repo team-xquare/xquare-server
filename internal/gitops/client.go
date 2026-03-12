@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/team-xquare/xquare-server/internal/config"
@@ -520,6 +521,14 @@ func sanitizeCommitToken(s string) string {
 
 func (c *Client) commit(repo *git.Repository, msg string) error {
 	wt, _ := repo.Worktree()
+
+	// Save HEAD so we can reset if push fails, leaving a local-only commit that
+	// would prevent the next git pull from succeeding (diverged history).
+	var preCommitHead plumbing.Hash
+	if ref, err := repo.Head(); err == nil {
+		preCommitHead = ref.Hash()
+	}
+
 	_, err := wt.Commit(msg, &git.CommitOptions{
 		Author: &object.Signature{
 			Name:  "xquare-server",
@@ -534,6 +543,11 @@ func (c *Client) commit(repo *git.Repository, msg string) error {
 		return fmt.Errorf("commit: %w", err)
 	}
 	if err := repo.Push(&git.PushOptions{Auth: c.auth()}); err != nil && err != git.NoErrAlreadyUpToDate {
+		// Roll back the local commit so the next pull starts from a clean state.
+		// Without this, a diverged local commit would cause the retry pull to fail.
+		if !preCommitHead.IsZero() {
+			_ = wt.Reset(&git.ResetOptions{Commit: preCommitHead, Mode: git.HardReset})
+		}
 		return fmt.Errorf("push: %w", err)
 	}
 	return nil
