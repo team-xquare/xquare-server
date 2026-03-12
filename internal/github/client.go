@@ -123,9 +123,15 @@ func (c *Client) GetUser(ctx context.Context, accessToken string) (*User, error)
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("github /user returned %d", resp.StatusCode)
+	}
 	var user User
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
 		return nil, err
+	}
+	if user.ID <= 0 {
+		return nil, fmt.Errorf("github /user returned invalid user ID")
 	}
 	return &user, nil
 }
@@ -139,12 +145,18 @@ func (c *Client) GetUserByUsername(ctx context.Context, username string) (*User,
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == 404 {
+	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("github user %q not found", username)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("github /users/%s returned %d", username, resp.StatusCode)
 	}
 	var user User
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
 		return nil, err
+	}
+	if user.ID <= 0 {
+		return nil, fmt.Errorf("github returned invalid user ID for %q", username)
 	}
 	return &user, nil
 }
@@ -170,6 +182,9 @@ func (c *Client) GetBranchSHA(ctx context.Context, owner, repo, branch string) (
 		return "", err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("github branches/%s returned %d", branch, resp.StatusCode)
+	}
 	var result struct {
 		Commit struct {
 			SHA string `json:"sha"`
