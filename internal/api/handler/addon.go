@@ -81,6 +81,11 @@ func (h *AddonHandler) Create(c *gin.Context) {
 		return
 	}
 
+	if err := validateName(addon.Name); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid addon name: " + err.Error()})
+		return
+	}
+
 	if err := domain.ValidAddonType(addon.Type); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

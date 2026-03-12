@@ -179,6 +179,12 @@ func (wc *WorkflowClient) ListWorkflows(ctx context.Context, project, app string
 		return workflows[i].StartedAt > workflows[j].StartedAt
 	})
 
+	// cap to 50 most recent to prevent unbounded response size
+	const maxBuilds = 50
+	if len(workflows) > maxBuilds {
+		workflows = workflows[:maxBuilds]
+	}
+
 	return workflows, nil
 }
 

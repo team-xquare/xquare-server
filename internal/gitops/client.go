@@ -120,7 +120,7 @@ func (c *Client) writeAllowedUsers(actor string, f *allowedUsersFile) error {
 }
 
 // AllowedUserIDs reads allowed-users.yaml and returns the set of allowed GitHub user IDs.
-// Returns nil (allow all) if the file does not exist.
+// Returns nil if the file does not exist; the middleware treats nil as DENY-ALL.
 func (c *Client) AllowedUserIDs() (map[int64]struct{}, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -132,7 +132,7 @@ func (c *Client) AllowedUserIDs() (map[int64]struct{}, error) {
 		return nil, err
 	}
 	if f == nil {
-		return nil, nil // no file → allow all
+		return nil, nil // no file → middleware treats as DENY-ALL
 	}
 	set := make(map[int64]struct{}, len(f.Users))
 	for _, u := range f.Users {
