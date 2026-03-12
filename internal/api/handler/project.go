@@ -73,7 +73,10 @@ func (h *ProjectHandler) List(c *gin.Context) {
 
 // GET /projects/:project
 func (h *ProjectHandler) Get(c *gin.Context) {
-	p, _ := c.Get("project")
+	p, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
 	c.JSON(http.StatusOK, p)
 }
 
