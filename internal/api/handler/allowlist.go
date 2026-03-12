@@ -61,8 +61,7 @@ func (h *AllowlistHandler) Add(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	actor, _ := c.Get("username")
-	if err := h.gitops.AddAllowedUser(actor.(string), gitops.AllowedUser{
+	if err := h.gitops.AddAllowedUser(c.GetString("username"), gitops.AllowedUser{
 		ID:       ghUser.ID,
 		Username: ghUser.Login,
 	}); err != nil {
@@ -79,8 +78,7 @@ func (h *AllowlistHandler) Remove(c *gin.Context) {
 		return
 	}
 	username := c.Param("username")
-	actor, _ := c.Get("username")
-	if err := h.gitops.RemoveAllowedUser(actor.(string), username); err != nil {
+	if err := h.gitops.RemoveAllowedUser(c.GetString("username"), username); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
