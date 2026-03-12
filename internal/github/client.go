@@ -81,7 +81,16 @@ type User struct {
 
 // ExchangeCode exchanges a GitHub OAuth code for an access token.
 func (c *Client) ExchangeCode(ctx context.Context, clientID, clientSecret, code string) (string, error) {
-	body := fmt.Sprintf(`{"client_id":"%s","client_secret":"%s","code":"%s"}`, clientID, clientSecret, code)
+	payload := struct {
+		ClientID     string `json:"client_id"`
+		ClientSecret string `json:"client_secret"`
+		Code         string `json:"code"`
+	}{ClientID: clientID, ClientSecret: clientSecret, Code: code}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal oauth request: %w", err)
+	}
+	body := string(b)
 	req, _ := http.NewRequestWithContext(ctx, "POST", "https://github.com/login/oauth/access_token", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")

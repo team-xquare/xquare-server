@@ -12,6 +12,7 @@ import (
 	"github.com/team-xquare/xquare-server/internal/domain"
 	"github.com/team-xquare/xquare-server/internal/github"
 	"github.com/team-xquare/xquare-server/internal/gitops"
+	"github.com/team-xquare/xquare-server/internal/k8s"
 	"github.com/team-xquare/xquare-server/internal/vault"
 )
 
@@ -26,15 +27,16 @@ type ProjectHandler struct {
 	gitops   *gitops.Client
 	vault    *vault.Client
 	github   *github.Client
+	k8s      *k8s.Client
 	adminIDs map[int64]bool
 }
 
-func NewProjectHandler(g *gitops.Client, v *vault.Client, gh *github.Client, adminIDs []int64) *ProjectHandler {
+func NewProjectHandler(g *gitops.Client, v *vault.Client, gh *github.Client, k *k8s.Client, adminIDs []int64) *ProjectHandler {
 	m := make(map[int64]bool, len(adminIDs))
 	for _, id := range adminIDs {
 		m[id] = true
 	}
-	return &ProjectHandler{gitops: g, vault: v, github: gh, adminIDs: m}
+	return &ProjectHandler{gitops: g, vault: v, github: gh, k8s: k, adminIDs: m}
 }
 
 func (h *ProjectHandler) isAdmin(githubID int64) bool {
@@ -136,6 +138,11 @@ func (h *ProjectHandler) Delete(c *gin.Context) {
 		_ = h.vault.DeleteEnv(project, app.Name)
 	}
 
+	// Delete K8s namespace (cascades Deployments, Services, PVCs, etc.)
+	if h.k8s != nil {
+		_ = h.k8s.DeleteNamespace(c.Request.Context(), project)
+	}
+
 	c.Status(http.StatusNoContent)
 }
 
@@ -177,6 +184,13 @@ func (h *ProjectHandler) AddMember(c *gin.Context) {
 func (h *ProjectHandler) RemoveMember(c *gin.Context) {
 	project := c.Param("project")
 	targetUsername := c.Param("username")
+
+	// Prevent removing the last owner — project would become permanently inaccessible
+	p, _ := c.Get("project")
+	if len(p.(*domain.Project).Owners) <= 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot remove the last owner of a project"})
+		return
+	}
 
 	// Resolve username → GitHub ID
 	user, err := h.github.GetUserByUsername(c.Request.Context(), targetUsername)

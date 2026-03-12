@@ -42,8 +42,8 @@ func main() {
 
 	// Init handlers
 	authH := handler.NewAuthHandler(githubClient, cfg)
-	projectH := handler.NewProjectHandler(gitopsClient, vaultClient, githubClient, cfg.JWT.AdminIDs)
-	appH := handler.NewAppHandler(gitopsClient, k8sClient, vaultClient, wfClient, githubClient)
+	projectH := handler.NewProjectHandler(gitopsClient, vaultClient, githubClient, k8sClient, cfg.JWT.AdminIDs)
+	appH := handler.NewAppHandler(gitopsClient, k8sClient, vaultClient, wfClient, githubClient, cfg.JWT.AdminIDs)
 	envH := handler.NewEnvHandler(vaultClient)
 	addonH := handler.NewAddonHandler(gitopsClient, k8sClient)
 	logsH := handler.NewLogsHandler(k8sClient)
@@ -107,24 +107,29 @@ func main() {
 			{
 				apps.GET("", appH.List)
 				apps.POST("", appH.Create)
-				apps.GET("/:app", appH.Get)
-				apps.PUT("/:app", appH.Update)
-				apps.DELETE("/:app", appH.Delete)
-				apps.GET("/:app/status", appH.Status)
-				apps.POST("/:app/redeploy", appH.Redeploy)
-				apps.GET("/:app/logs", logsH.Stream)
-				apps.GET("/:app/builds", buildsH.List)
-				apps.GET("/:app/builds/:workflow/logs", buildsH.StreamLogs)
-				apps.GET("/:app/tunnel", appH.Tunnel)
+
+				// App-specific routes: verify :app belongs to this project before dispatching
+				app := apps.Group("/:app", middleware.AppAccess())
+				{
+					app.GET("", appH.Get)
+					app.PUT("", appH.Update)
+					app.DELETE("", appH.Delete)
+					app.GET("/status", appH.Status)
+					app.POST("/redeploy", appH.Redeploy)
+					app.GET("/logs", logsH.Stream)
+					app.GET("/builds", buildsH.List)
+					app.GET("/builds/:workflow/logs", buildsH.StreamLogs)
+					app.GET("/tunnel", appH.Tunnel)
+				}
 			}
 
-			// Env
-			env := proj.Group("/apps/:app/env")
+			// Env — also gated by AppAccess
+			env := proj.Group("/apps/:app", middleware.AppAccess())
 			{
-				env.GET("", envH.Get)
-				env.PUT("", envH.Set)
-				env.PATCH("", envH.Patch)
-				env.DELETE("/:key", envH.DeleteKey)
+				env.GET("/env", envH.Get)
+				env.PUT("/env", envH.Set)
+				env.PATCH("/env", envH.Patch)
+				env.DELETE("/env/:key", envH.DeleteKey)
 			}
 
 			// Addons

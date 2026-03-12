@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -15,6 +17,32 @@ import (
 	"github.com/team-xquare/xquare-server/internal/k8s"
 	"github.com/team-xquare/xquare-server/internal/vault"
 )
+
+// redeployLimiter enforces a per-app cooldown on CI triggers to prevent Workflow flooding.
+type redeployLimiter struct {
+	mu       sync.Mutex
+	lastRun  map[string]time.Time
+	cooldown time.Duration
+}
+
+func newRedeployLimiter() *redeployLimiter {
+	return &redeployLimiter{
+		lastRun:  make(map[string]time.Time),
+		cooldown: 60 * time.Second,
+	}
+}
+
+func (r *redeployLimiter) allow(key string) (bool, time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if t, ok := r.lastRun[key]; ok {
+		if wait := r.cooldown - time.Since(t); wait > 0 {
+			return false, wait
+		}
+	}
+	r.lastRun[key] = time.Now()
+	return true, 0
+}
 
 var resourceNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$`)
 
@@ -44,15 +72,25 @@ func friendlyK8sError(err error) string {
 }
 
 type AppHandler struct {
-	gitops *gitops.Client
-	k8s    *k8s.Client
-	vault  *vault.Client
-	wf     *k8s.WorkflowClient
-	github *github.Client
+	gitops   *gitops.Client
+	k8s      *k8s.Client
+	vault    *vault.Client
+	wf       *k8s.WorkflowClient
+	github   *github.Client
+	adminIDs map[int64]bool
+	limiter  *redeployLimiter
 }
 
-func NewAppHandler(g *gitops.Client, k *k8s.Client, v *vault.Client, wf *k8s.WorkflowClient, gh *github.Client) *AppHandler {
-	return &AppHandler{gitops: g, k8s: k, vault: v, wf: wf, github: gh}
+func NewAppHandler(g *gitops.Client, k *k8s.Client, v *vault.Client, wf *k8s.WorkflowClient, gh *github.Client, adminIDs []int64) *AppHandler {
+	m := make(map[int64]bool, len(adminIDs))
+	for _, id := range adminIDs {
+		m[id] = true
+	}
+	return &AppHandler{gitops: g, k8s: k, vault: v, wf: wf, github: gh, adminIDs: m, limiter: newRedeployLimiter()}
+}
+
+func (h *AppHandler) isAdmin(githubID int64) bool {
+	return h.adminIDs[githubID]
 }
 
 // GET /projects/:project/apps
@@ -140,6 +178,17 @@ func (h *AppHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// disableNetworkPolicy is admin-only — regular users cannot bypass network isolation
+	if app.DisableNetworkPolicy && !h.isAdmin(c.GetInt64("githubId")) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "disableNetworkPolicy requires admin privileges"})
+		return
+	}
+
+	if err := validateBuildSpec(app.Build); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	// Auto-resolve GitHub App installation ID
 	installID, err := h.github.GetRepoInstallationID(c.Request.Context(), app.GitHub.Owner, app.GitHub.Repo)
 	if err != nil {
@@ -193,6 +242,17 @@ func (h *AppHandler) Update(c *gin.Context) {
 		return
 	}
 	updated.Name = appName // enforce from path
+
+	// disableNetworkPolicy is admin-only
+	if updated.DisableNetworkPolicy && !h.isAdmin(c.GetInt64("githubId")) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "disableNetworkPolicy requires admin privileges"})
+		return
+	}
+
+	if err := validateBuildSpec(updated.Build); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	// Preserve server-managed fields from existing app
 	p, _ := c.Get("project")
@@ -267,6 +327,121 @@ func (h *AppHandler) Tunnel(c *gin.Context) {
 	})
 }
 
+// validateBuildSpec checks all build command fields for shell injection patterns.
+func validateBuildSpec(b domain.Build) error {
+	check := func(label, val string) error {
+		if val == "" {
+			return nil
+		}
+		return domain.ValidBuildCommand(val)
+	}
+	checkPath := func(label, val string) error {
+		if val == "" {
+			return nil
+		}
+		return domain.ValidFilePath(val)
+	}
+	if b.Gradle != nil {
+		if err := check("buildCommand", b.Gradle.BuildCommand); err != nil {
+			return err
+		}
+		if err := checkPath("jarOutputPath", b.Gradle.JarOutputPath); err != nil {
+			return err
+		}
+	}
+	if b.NodeJS != nil {
+		if err := check("buildCommand", b.NodeJS.BuildCommand); err != nil {
+			return err
+		}
+		if err := check("startCommand", b.NodeJS.StartCommand); err != nil {
+			return err
+		}
+	}
+	if b.React != nil {
+		if err := check("buildCommand", b.React.BuildCommand); err != nil {
+			return err
+		}
+		if err := checkPath("distPath", b.React.DistPath); err != nil {
+			return err
+		}
+	}
+	if b.Vite != nil {
+		if err := check("buildCommand", b.Vite.BuildCommand); err != nil {
+			return err
+		}
+		if err := checkPath("distPath", b.Vite.DistPath); err != nil {
+			return err
+		}
+	}
+	if b.Vue != nil {
+		if err := check("buildCommand", b.Vue.BuildCommand); err != nil {
+			return err
+		}
+		if err := checkPath("distPath", b.Vue.DistPath); err != nil {
+			return err
+		}
+	}
+	if b.NextJS != nil {
+		if err := check("buildCommand", b.NextJS.BuildCommand); err != nil {
+			return err
+		}
+		if err := check("startCommand", b.NextJS.StartCommand); err != nil {
+			return err
+		}
+	}
+	if b.NextJSExport != nil {
+		if err := check("buildCommand", b.NextJSExport.BuildCommand); err != nil {
+			return err
+		}
+		if err := checkPath("distPath", b.NextJSExport.DistPath); err != nil {
+			return err
+		}
+	}
+	if b.Go != nil {
+		if err := check("buildCommand", b.Go.BuildCommand); err != nil {
+			return err
+		}
+	}
+	if b.Rust != nil {
+		if err := check("buildCommand", b.Rust.BuildCommand); err != nil {
+			return err
+		}
+	}
+	if b.Maven != nil {
+		if err := check("buildCommand", b.Maven.BuildCommand); err != nil {
+			return err
+		}
+		if err := checkPath("jarOutputPath", b.Maven.JarOutputPath); err != nil {
+			return err
+		}
+	}
+	if b.Django != nil {
+		if err := check("buildCommand", b.Django.BuildCommand); err != nil {
+			return err
+		}
+		if err := check("startCommand", b.Django.StartCommand); err != nil {
+			return err
+		}
+	}
+	if b.Flask != nil {
+		if err := check("buildCommand", b.Flask.BuildCommand); err != nil {
+			return err
+		}
+		if err := check("startCommand", b.Flask.StartCommand); err != nil {
+			return err
+		}
+	}
+	if b.Docker != nil {
+		if err := checkPath("dockerfilePath", b.Docker.DockerfilePath); err != nil {
+			return err
+		}
+		if err := checkPath("contextPath", b.Docker.ContextPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // POST /projects/:project/apps/:app/redeploy
 // Triggers CI by creating a new Argo Workflow for the app.
 func (h *AppHandler) Redeploy(c *gin.Context) {
@@ -275,6 +450,16 @@ func (h *AppHandler) Redeploy(c *gin.Context) {
 
 	if h.wf == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "CI trigger unavailable"})
+		return
+	}
+
+	// Rate limit: 1 redeploy per app per 60 seconds to prevent Workflow flooding
+	limiterKey := project + "/" + app
+	if ok, wait := h.limiter.allow(limiterKey); !ok {
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error":   fmt.Sprintf("redeploy rate limit exceeded — wait %ds before retrying", int(wait.Seconds())),
+			"retryIn": int(wait.Seconds()),
+		})
 		return
 	}
 

@@ -11,7 +11,8 @@ type allowlistProvider interface {
 }
 
 // Allowlist checks the requesting user's GitHub ID against allowed-users.yaml.
-// If the file does not exist, all authenticated users are allowed.
+// If the file does not exist, access is DENIED by default.
+// An admin must create allowed-users.yaml to grant access.
 func Allowlist(gitops allowlistProvider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		allowed, err := gitops.AllowedUserIDs()
@@ -20,7 +21,7 @@ func Allowlist(gitops allowlistProvider) gin.HandlerFunc {
 			return
 		}
 		if allowed == nil {
-			c.Next()
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "access denied: allowlist not configured"})
 			return
 		}
 		githubID, _ := c.Get("githubId")

@@ -23,7 +23,15 @@ type Client struct {
 
 func buildRestConfig(cfg *config.K8sConfig) (*rest.Config, error) {
 	if cfg.Token != "" {
-		return &rest.Config{Host: cfg.Host, BearerToken: cfg.Token, TLSClientConfig: rest.TLSClientConfig{Insecure: true}}, nil
+		tlsCfg := rest.TLSClientConfig{}
+		if cfg.CAData != "" {
+			tlsCfg.CAData = []byte(cfg.CAData)
+		} else {
+			// No CA cert provided: skip TLS verification.
+			// Set K8S_CA_CERT env var to enable TLS verification.
+			tlsCfg.Insecure = true
+		}
+		return &rest.Config{Host: cfg.Host, BearerToken: cfg.Token, TLSClientConfig: tlsCfg}, nil
 	}
 	if cfg.ConfigPath != "" {
 		return clientcmd.BuildConfigFromFlags("", cfg.ConfigPath)
@@ -201,6 +209,16 @@ type ErrAppNotDeployed struct{ App string }
 
 func (e *ErrAppNotDeployed) Error() string {
 	return fmt.Sprintf("app %q has not been deployed yet — run: xquare deploy %s", e.App, e.App)
+}
+
+// DeleteNamespace deletes the K8s namespace for a project (cascades all resources).
+func (c *Client) DeleteNamespace(ctx context.Context, project string) error {
+	ns := domain.Namespace(project)
+	err := c.cs.CoreV1().Namespaces().Delete(ctx, ns, metav1.DeleteOptions{})
+	if err != nil && !k8serrors.IsNotFound(err) {
+		return fmt.Errorf("delete namespace %s: %w", ns, err)
+	}
+	return nil
 }
 
 // NamespaceExists checks if a project namespace exists

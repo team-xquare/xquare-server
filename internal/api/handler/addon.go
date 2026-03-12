@@ -78,6 +78,11 @@ func (h *AddonHandler) Create(c *gin.Context) {
 		return
 	}
 
+	if err := domain.ValidAddonType(addon.Type); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	storageBytes, err := parseStorageBytes(addon.Storage)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
