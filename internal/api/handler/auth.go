@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -34,13 +35,15 @@ func (h *AuthHandler) GitHubCallback(c *gin.Context) {
 	accessToken, err := h.gh.ExchangeCode(c.Request.Context(),
 		h.cfg.GitHub.ClientID, h.cfg.GitHub.ClientSecret, req.Code)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "github oauth failed: " + err.Error()})
+		log.Printf("github oauth exchange failed: %v", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication failed"})
 		return
 	}
 
 	user, err := h.gh.GetUser(c.Request.Context(), accessToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "fetch user failed: " + err.Error()})
+		log.Printf("github get user failed: %v", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication failed"})
 		return
 	}
 

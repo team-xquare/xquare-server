@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -105,7 +106,8 @@ func (h *LogsHandler) streamWS(c *gin.Context, project, app string, tailLines in
 	if err != nil {
 		var notDeployed *k8s.ErrAppNotDeployed
 		if errors.As(err, &notDeployed) {
-			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"`+notDeployed.Error()+`","code":"not_deployed"}`))
+			msg, _ := json.Marshal(map[string]string{"error": notDeployed.Error(), "code": "not_deployed"})
+			_ = conn.WriteMessage(websocket.TextMessage, msg)
 		} else {
 			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"log stream unavailable"}`))
 		}
