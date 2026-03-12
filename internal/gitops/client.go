@@ -75,8 +75,8 @@ func (c *Client) ensureRepoFresh(forcePull bool) (*git.Repository, error) {
 }
 
 type AllowedUser struct {
-	ID       int64  `yaml:"id"`
-	Username string `yaml:"username"`
+	ID       int64  `yaml:"id" json:"id"`
+	Username string `yaml:"username" json:"username"`
 }
 
 type allowedUsersFile struct {
