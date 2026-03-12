@@ -241,3 +241,19 @@ func ValidAddonType(t string) error {
 	}
 	return nil
 }
+
+// ValidRouteHost returns an error if the hostname is a reserved infrastructure domain.
+// Blocks *-xquare-infra.dsmhs.kr, xquare-remote-access-*.dsmhs.kr, and xquare-server.dsmhs.kr.
+func ValidRouteHost(host string) error {
+	h := strings.ToLower(strings.TrimSpace(host))
+	if strings.HasSuffix(h, "-xquare-infra.dsmhs.kr") {
+		return fmt.Errorf("route host %q is a reserved infrastructure domain", host)
+	}
+	if strings.HasPrefix(h, "xquare-remote-access-") && strings.HasSuffix(h, ".dsmhs.kr") {
+		return fmt.Errorf("route host %q is a reserved infrastructure domain", host)
+	}
+	if h == "xquare-server.dsmhs.kr" {
+		return fmt.Errorf("route host %q is a reserved infrastructure domain", host)
+	}
+	return nil
+}

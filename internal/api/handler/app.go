@@ -205,6 +205,12 @@ func (h *AppHandler) Create(c *gin.Context) {
 	}
 	app.GitHub.InstallationID = installID
 
+	// Validate endpoints: block reserved infrastructure domains
+	if err := validateEndpoints(app.Endpoints); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	// Check domain conflicts
 	var domains []string
 	for _, ep := range app.Endpoints {
@@ -252,6 +258,24 @@ func (h *AppHandler) Update(c *gin.Context) {
 	if err := validateBuildSpec(updated.Build); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Validate endpoints: block reserved infrastructure domains
+	if err := validateEndpoints(updated.Endpoints); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Check domain conflicts
+	var domains []string
+	for _, ep := range updated.Endpoints {
+		domains = append(domains, ep.Routes...)
+	}
+	if len(domains) > 0 {
+		if err := h.gitops.CheckDomainConflict(project, updated.Name, domains); err != nil {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	// Preserve server-managed fields from existing app
@@ -325,6 +349,19 @@ func (h *AppHandler) Tunnel(c *gin.Context) {
 		"password": password,
 		"ports":    ports,
 	})
+}
+
+// validateEndpoints returns an error if any route uses a reserved infrastructure hostname.
+func validateEndpoints(endpoints []domain.Endpoint) error {
+	for _, ep := range endpoints {
+		for _, route := range ep.Routes {
+			host := strings.SplitN(route, "/", 2)[0]
+			if err := domain.ValidRouteHost(host); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // validateBuildSpec checks all build command fields for shell injection patterns.
