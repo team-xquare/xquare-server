@@ -52,6 +52,12 @@ func main() {
 
 	r := gin.Default()
 
+	// Limit request body to 1 MiB to prevent memory exhaustion via large payloads
+	r.Use(func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
+		c.Next()
+	})
+
 	// CORS
 	r.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")

@@ -15,6 +15,7 @@ import (
 )
 
 const maxStorageBytes = 4 * 1024 * 1024 * 1024 // 4Gi
+const maxBootstrapBytes = 32 * 1024            // 32 KiB
 
 var storageRe = regexp.MustCompile(`^(\d+)(Ki|Mi|Gi|Ti|Pi|E|P|T|G|M|K)$`)
 
@@ -98,6 +99,11 @@ func (h *AddonHandler) Create(c *gin.Context) {
 	}
 	if storageBytes >= maxStorageBytes {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "storage must be less than 4Gi"})
+		return
+	}
+
+	if len(addon.Bootstrap) > maxBootstrapBytes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("bootstrap must be less than %d bytes", maxBootstrapBytes)})
 		return
 	}
 

@@ -242,6 +242,43 @@ func ValidAddonType(t string) error {
 	return nil
 }
 
+// ValidEnvKey returns an error if the key is not safe for use as a Vault KV key.
+// Blocks empty keys, keys starting with underscore (Vault internal), and non-printable chars.
+func ValidEnvKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("env key must not be empty")
+	}
+	if strings.HasPrefix(key, "_") {
+		return fmt.Errorf("env key %q must not start with underscore (reserved for internal use)", key)
+	}
+	for _, r := range key {
+		if r < 0x20 || r > 0x7e {
+			return fmt.Errorf("env key %q contains non-printable or non-ASCII character", key)
+		}
+	}
+	return nil
+}
+
+// ValidTriggerPaths validates the triggerPaths array on a GitHub app config.
+// Each path must be a valid relative file path (no null bytes, no traversal).
+const maxTriggerPaths = 20
+const maxTriggerPathLen = 200
+
+func ValidTriggerPaths(paths []string) error {
+	if len(paths) > maxTriggerPaths {
+		return fmt.Errorf("triggerPaths must not exceed %d entries", maxTriggerPaths)
+	}
+	for _, p := range paths {
+		if len(p) > maxTriggerPathLen {
+			return fmt.Errorf("triggerPath entry exceeds max length of %d", maxTriggerPathLen)
+		}
+		if err := ValidFilePath(p); err != nil {
+			return fmt.Errorf("invalid triggerPath %q: %w", p, err)
+		}
+	}
+	return nil
+}
+
 // ValidRouteHost returns an error if the hostname is a reserved infrastructure domain.
 // Blocked patterns:
 //   - *-xquare-infra.dsmhs.kr  (harbor, argocd, argocdwebhook, argo-events, argo-workflows, vault, longhorn, goldilocks)
