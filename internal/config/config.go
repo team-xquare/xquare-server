@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -22,6 +23,7 @@ type JWTConfig struct {
 	Secret     string
 	AccessExp  int // hours
 	RefreshExp int // days
+	AdminUsers []string // GitHub usernames with full access (comma-separated ADMIN_GITHUB_USERS)
 }
 
 type GitHubConfig struct {
@@ -57,6 +59,7 @@ func Load() (*Config, error) {
 			Secret:     requireEnv("JWT_SECRET"),
 			AccessExp:  24,
 			RefreshExp: 30,
+			AdminUsers: parseList(os.Getenv("ADMIN_GITHUB_USERS")),
 		},
 		GitHub: GitHubConfig{
 			ClientID:     requireEnv("GITHUB_CLIENT_ID"),
@@ -87,6 +90,17 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func parseList(s string) []string {
+	var out []string
+	for _, v := range strings.Split(s, ",") {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func requireEnv(key string) string {

@@ -120,8 +120,8 @@ func (c *Client) readProject(name string) (*domain.Project, error) {
 	return &p, nil
 }
 
-// CreateProject creates a new empty projects/{name}.yaml and pushes
-func (c *Client) CreateProject(name string) error {
+// CreateProject creates a new empty projects/{name}.yaml with the creator as first owner.
+func (c *Client) CreateProject(name, ownerUsername string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	repo, err := c.ensureRepoFresh(true)
@@ -132,8 +132,43 @@ func (c *Client) CreateProject(name string) error {
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("project %q already exists", name)
 	}
-	p := domain.Project{Applications: []domain.Application{}, Addons: []domain.Addon{}}
+	p := domain.Project{
+		Owners:       []string{ownerUsername},
+		Applications: []domain.Application{},
+		Addons:       []domain.Addon{},
+	}
 	return c.writeAndPush(repo, name, &p, fmt.Sprintf("feat: create project %s", name))
+}
+
+// AddProjectMember adds a GitHub username as a project owner.
+func (c *Client) AddProjectMember(project, username string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.retryUpdate(project, func(p *domain.Project) error {
+		for _, o := range p.Owners {
+			if o == username {
+				return nil // already a member, no-op
+			}
+		}
+		p.Owners = append(p.Owners, username)
+		return nil
+	}, fmt.Sprintf("feat: add member %s to project %s", username, project))
+}
+
+// RemoveProjectMember removes a GitHub username from project owners.
+func (c *Client) RemoveProjectMember(project, username string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.retryUpdate(project, func(p *domain.Project) error {
+		owners := p.Owners[:0]
+		for _, o := range p.Owners {
+			if o != username {
+				owners = append(owners, o)
+			}
+		}
+		p.Owners = owners
+		return nil
+	}, fmt.Sprintf("feat: remove member %s from project %s", username, project))
 }
 
 // DeleteProject removes projects/{name}.yaml and pushes

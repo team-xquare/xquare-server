@@ -42,7 +42,7 @@ func main() {
 
 	// Init handlers
 	authH := handler.NewAuthHandler(githubClient, cfg)
-	projectH := handler.NewProjectHandler(gitopsClient, vaultClient)
+	projectH := handler.NewProjectHandler(gitopsClient, vaultClient, cfg.JWT.AdminUsers)
 	appH := handler.NewAppHandler(gitopsClient, k8sClient, vaultClient, githubClient)
 	envH := handler.NewEnvHandler(vaultClient)
 	addonH := handler.NewAddonHandler(gitopsClient, k8sClient)
@@ -78,16 +78,23 @@ func main() {
 	// Protected routes
 	api := r.Group("/", middleware.Auth(cfg.JWT.Secret))
 	{
-		// Projects
-		projects := api.Group("/projects")
+		// Projects (list + create are not project-scoped)
+		api.GET("/projects", projectH.List)
+		api.POST("/projects", projectH.Create)
+
+		// All project-specific routes require project ownership
+		proj := api.Group("/projects/:project", middleware.ProjectAccess(gitopsClient, cfg.JWT.AdminUsers))
 		{
-			projects.GET("", projectH.List)
-			projects.POST("", projectH.Create)
-			projects.GET("/:project", projectH.Get)
-			projects.DELETE("/:project", projectH.Delete)
+			proj.GET("", projectH.Get)
+			proj.DELETE("", projectH.Delete)
+
+			// Members
+			proj.GET("/members", projectH.ListMembers)
+			proj.POST("/members", projectH.AddMember)
+			proj.DELETE("/members/:username", projectH.RemoveMember)
 
 			// Apps
-			apps := projects.Group("/:project/apps")
+			apps := proj.Group("/apps")
 			{
 				apps.GET("", appH.List)
 				apps.POST("", appH.Create)
@@ -102,7 +109,7 @@ func main() {
 			}
 
 			// Env
-			env := projects.Group("/:project/apps/:app/env")
+			env := proj.Group("/apps/:app/env")
 			{
 				env.GET("", envH.Get)
 				env.PUT("", envH.Set)
@@ -111,7 +118,7 @@ func main() {
 			}
 
 			// Addons
-			addons := projects.Group("/:project/addons")
+			addons := proj.Group("/addons")
 			{
 				addons.GET("", addonH.List)
 				addons.POST("", addonH.Create)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/team-xquare/xquare-server/internal/domain"
 	"github.com/team-xquare/xquare-server/internal/gitops"
 	"github.com/team-xquare/xquare-server/internal/vault"
 )
@@ -14,22 +15,51 @@ import (
 var projectNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$`)
 
 type ProjectHandler struct {
-	gitops *gitops.Client
-	vault  *vault.Client
+	gitops     *gitops.Client
+	vault      *vault.Client
+	adminUsers map[string]bool
 }
 
-func NewProjectHandler(g *gitops.Client, v *vault.Client) *ProjectHandler {
-	return &ProjectHandler{gitops: g, vault: v}
+func NewProjectHandler(g *gitops.Client, v *vault.Client, admins []string) *ProjectHandler {
+	m := make(map[string]bool, len(admins))
+	for _, u := range admins {
+		if u != "" {
+			m[u] = true
+		}
+	}
+	return &ProjectHandler{gitops: g, vault: v, adminUsers: m}
 }
 
-// GET /projects
+func (h *ProjectHandler) isAdmin(username string) bool {
+	return h.adminUsers[username]
+}
+
+// GET /projects — only shows projects the user owns (admins see all)
 func (h *ProjectHandler) List(c *gin.Context) {
-	projects, err := h.gitops.ListProjects()
+	username := c.GetString("username")
+	all, err := h.gitops.ListProjects()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"projects": projects})
+	if h.isAdmin(username) {
+		c.JSON(http.StatusOK, gin.H{"projects": all})
+		return
+	}
+	var accessible []string
+	for _, name := range all {
+		p, err := h.gitops.GetProject(name)
+		if err != nil {
+			continue
+		}
+		if p.HasAccess(username) {
+			accessible = append(accessible, name)
+		}
+	}
+	if accessible == nil {
+		accessible = []string{}
+	}
+	c.JSON(http.StatusOK, gin.H{"projects": accessible})
 }
 
 // GET /projects/:project
@@ -58,7 +88,7 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 		return
 	}
 
-	if err := h.gitops.CreateProject(req.Name); err != nil {
+	if err := h.gitops.CreateProject(req.Name, c.GetString("username")); err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
@@ -92,5 +122,63 @@ func (h *ProjectHandler) Delete(c *gin.Context) {
 		_ = h.vault.DeleteEnv(project, app.Name)
 	}
 
+	c.Status(http.StatusNoContent)
+}
+
+// GET /projects/:project/members
+func (h *ProjectHandler) ListMembers(c *gin.Context) {
+	p, _ := c.Get("project")
+	proj := p.(*domain.Project)
+	c.JSON(http.StatusOK, gin.H{"owners": proj.Owners})
+}
+
+// POST /projects/:project/members  {"username": "github-login"}
+func (h *ProjectHandler) AddMember(c *gin.Context) {
+	project := c.Param("project")
+	caller := c.GetString("username")
+
+	// only existing owners (or admins) can add members
+	if p, ok := c.Get("project"); ok {
+		proj := p.(*domain.Project)
+		if !h.isAdmin(caller) && !proj.HasAccess(caller) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only project owners can add members"})
+			return
+		}
+	}
+
+	var req struct {
+		Username string `json:"username" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.gitops.AddProjectMember(project, req.Username); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"added": req.Username})
+}
+
+// DELETE /projects/:project/members/:username
+func (h *ProjectHandler) RemoveMember(c *gin.Context) {
+	project := c.Param("project")
+	target := c.Param("username")
+	caller := c.GetString("username")
+
+	// only existing owners (or admins) can remove members
+	if p, ok := c.Get("project"); ok {
+		proj := p.(*domain.Project)
+		if !h.isAdmin(caller) && !proj.HasAccess(caller) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only project owners can remove members"})
+			return
+		}
+	}
+
+	if err := h.gitops.RemoveProjectMember(project, target); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	c.Status(http.StatusNoContent)
 }

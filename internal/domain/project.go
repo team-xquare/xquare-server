@@ -2,8 +2,19 @@ package domain
 
 // Project represents the full projects/{name}.yaml
 type Project struct {
+	Owners       []string      `yaml:"owners,omitempty" json:"owners,omitempty"`
 	Applications []Application `yaml:"applications" json:"applications"`
 	Addons       []Addon       `yaml:"addons,omitempty" json:"addons,omitempty"`
+}
+
+// HasAccess returns true if the given GitHub username is an owner of this project.
+func (p *Project) HasAccess(username string) bool {
+	for _, o := range p.Owners {
+		if o == username {
+			return true
+		}
+	}
+	return false
 }
 
 // Application represents one entry in applications[]
