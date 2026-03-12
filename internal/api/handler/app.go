@@ -251,7 +251,12 @@ func (h *AppHandler) Create(c *gin.Context) {
 	}
 
 	if err := h.vault.InitEnv(project, app.Name); err != nil {
-		log.Printf("warn: vault.InitEnv %s/%s: %v", project, app.Name, err)
+		// Rollback gitops to avoid leaving app in inconsistent state (exists in gitops but no vault secret)
+		if rbErr := h.gitops.DeleteApplication(project, app.Name, c.GetString("username")); rbErr != nil {
+			log.Printf("warn: rollback gitops after vault failure: %v", rbErr)
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to initialize app secrets"})
+		return
 	}
 	c.JSON(http.StatusCreated, app)
 }
