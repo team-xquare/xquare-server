@@ -3,6 +3,7 @@ package handler
 import (
 	"bufio"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -10,6 +11,9 @@ import (
 
 	"github.com/team-xquare/xquare-server/internal/k8s"
 )
+
+// workflowNameRe enforces K8s resource naming rules to prevent label selector injection.
+var workflowNameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9\-\.]*[a-z0-9])?$`)
 
 type BuildsHandler struct {
 	wf *k8s.WorkflowClient
@@ -38,6 +42,13 @@ func (h *BuildsHandler) StreamLogs(c *gin.Context) {
 	project := c.Param("project")
 	workflowName := c.Param("workflow")
 	follow := c.Query("follow") != "false"
+
+	// Validate workflow name to prevent K8s label selector injection.
+	// "latest" is the only special value allowed before resolution.
+	if workflowName != "latest" && (len(workflowName) > 253 || !workflowNameRe.MatchString(workflowName)) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid workflow name"})
+		return
+	}
 
 	// resolve "latest" to actual workflow name
 	if workflowName == "latest" {

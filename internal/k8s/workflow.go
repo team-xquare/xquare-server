@@ -194,7 +194,7 @@ func (wc *WorkflowClient) StreamWorkflowLogs(ctx context.Context, project, workf
 
 	// Find pods labeled with this workflow
 	pods, err := wc.cs.cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("workflows.argoproj.io/workflow=%s", workflowName),
+		LabelSelector: "workflows.argoproj.io/workflow=" + workflowName,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list workflow pods: %w", err)
