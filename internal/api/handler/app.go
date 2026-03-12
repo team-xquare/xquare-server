@@ -42,6 +42,12 @@ func (r *redeployLimiter) allow(key string) (bool, time.Duration) {
 		}
 	}
 	r.lastRun[key] = time.Now()
+	// Evict entries that are well past the cooldown window to bound map size.
+	for k, t := range r.lastRun {
+		if time.Since(t) > 2*r.cooldown {
+			delete(r.lastRun, k)
+		}
+	}
 	return true, 0
 }
 
