@@ -9,6 +9,18 @@ import (
 	"github.com/team-xquare/xquare-server/internal/vault"
 )
 
+// maxEnvTotalBytes is the maximum combined size (keys + values) of all env vars
+// for a single app. Prevents unbounded Vault secret growth via repeated PATCHes.
+const maxEnvTotalBytes = 1 * 1024 * 1024 // 1 MiB
+
+func totalEnvSize(envs map[string]string) int {
+	n := 0
+	for k, v := range envs {
+		n += len(k) + len(v)
+	}
+	return n
+}
+
 type EnvHandler struct {
 	vault *vault.Client
 }
@@ -48,6 +60,10 @@ func (h *EnvHandler) Set(c *gin.Context) {
 			return
 		}
 	}
+	if totalEnvSize(envs) > maxEnvTotalBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "env vars exceed 1 MiB total size limit"})
+		return
+	}
 
 	if err := h.vault.SetEnv(project, app, envs); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -73,6 +89,24 @@ func (h *EnvHandler) Patch(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+	}
+
+	// Read current state and check total size after merge before writing
+	current, err := h.vault.GetEnv(project, app)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	merged := make(map[string]string, len(current)+len(patch))
+	for k, v := range current {
+		merged[k] = v
+	}
+	for k, v := range patch {
+		merged[k] = v
+	}
+	if totalEnvSize(merged) > maxEnvTotalBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "env vars exceed 1 MiB total size limit after merge"})
+		return
 	}
 
 	if err := h.vault.PatchEnv(project, app, patch); err != nil {

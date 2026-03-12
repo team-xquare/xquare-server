@@ -288,6 +288,7 @@ func (c *Client) CreateProject(name string, owner domain.Owner, actor string) er
 		return fmt.Errorf("project %q already exists", name)
 	}
 	p := domain.Project{
+		CreatorID:    owner.ID,
 		Owners:       []domain.Owner{owner},
 		Applications: []domain.Application{},
 		Addons:       []domain.Addon{},
