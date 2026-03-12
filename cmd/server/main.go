@@ -35,6 +35,11 @@ func main() {
 	}
 	githubClient := github.NewClient(&cfg.GitHub)
 
+	wfClient, err := k8s.NewWorkflowClient(&cfg.K8s, k8sClient)
+	if err != nil {
+		log.Printf("warn: workflow client init failed (build logs unavailable): %v", err)
+	}
+
 	// Init handlers
 	authH := handler.NewAuthHandler(githubClient, cfg)
 	projectH := handler.NewProjectHandler(gitopsClient, vaultClient)
@@ -42,6 +47,7 @@ func main() {
 	envH := handler.NewEnvHandler(vaultClient)
 	addonH := handler.NewAddonHandler(gitopsClient, k8sClient)
 	logsH := handler.NewLogsHandler(k8sClient)
+	buildsH := handler.NewBuildsHandler(wfClient)
 
 	r := gin.Default()
 
@@ -91,6 +97,8 @@ func main() {
 				apps.GET("/:app/status", appH.Status)
 				apps.POST("/:app/redeploy", appH.Redeploy)
 				apps.GET("/:app/logs", logsH.Stream)
+				apps.GET("/:app/builds", buildsH.List)
+				apps.GET("/:app/builds/:workflow/logs", buildsH.StreamLogs)
 			}
 
 			// Env
