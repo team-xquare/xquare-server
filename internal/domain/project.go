@@ -241,3 +241,26 @@ func ValidAddonType(t string) error {
 	}
 	return nil
 }
+
+// ValidRouteHost returns an error if the hostname is a reserved infrastructure domain.
+// Blocked patterns:
+//   - *-xquare-infra.dsmhs.kr  (harbor, argocd, argocdwebhook, argo-events, argo-workflows, vault, longhorn, goldilocks)
+//   - xquare-remote-access-*.dsmhs.kr  (per-project DB tunnel access servers)
+//   - *-observability-dashboard.dsmhs.kr  (per-project Grafana dashboards)
+//   - xquare-server.dsmhs.kr  (the API server itself)
+func ValidRouteHost(host string) error {
+	h := strings.ToLower(strings.TrimSpace(host))
+	if strings.HasSuffix(h, "-xquare-infra.dsmhs.kr") {
+		return fmt.Errorf("route host %q is a reserved infrastructure domain", host)
+	}
+	if strings.HasPrefix(h, "xquare-remote-access-") && strings.HasSuffix(h, ".dsmhs.kr") {
+		return fmt.Errorf("route host %q is a reserved infrastructure domain", host)
+	}
+	if strings.HasSuffix(h, "-observability-dashboard.dsmhs.kr") {
+		return fmt.Errorf("route host %q is a reserved infrastructure domain", host)
+	}
+	if h == "xquare-server.dsmhs.kr" {
+		return fmt.Errorf("route host %q is a reserved infrastructure domain", host)
+	}
+	return nil
+}
