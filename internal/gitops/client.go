@@ -336,6 +336,9 @@ func (c *Client) commit(repo *git.Repository, msg string) error {
 		},
 	})
 	if err != nil {
+		if strings.Contains(err.Error(), "clean working tree") || strings.Contains(err.Error(), "empty commit") {
+			return nil // already up to date, no-op
+		}
 		return fmt.Errorf("commit: %w", err)
 	}
 	if err := repo.Push(&git.PushOptions{Auth: c.auth()}); err != nil && err != git.NoErrAlreadyUpToDate {
