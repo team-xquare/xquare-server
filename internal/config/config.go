@@ -50,6 +50,8 @@ type VaultConfig struct {
 
 type K8sConfig struct {
 	ConfigPath string // path to kubeconfig, empty = in-cluster
+	Token      string // bearer token; if set, overrides ConfigPath/in-cluster
+	Host       string // API server host when Token is used; defaults to in-cluster
 }
 
 func Load() (*Config, error) {
@@ -83,6 +85,8 @@ func Load() (*Config, error) {
 		},
 		K8s: K8sConfig{
 			ConfigPath: os.Getenv("KUBECONFIG"),
+			Token:      os.Getenv("K8S_TOKEN"),
+			Host:       getEnv("K8S_HOST", "https://kubernetes.default.svc.cluster.local"),
 		},
 	}
 	return cfg, nil

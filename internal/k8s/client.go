@@ -21,14 +21,18 @@ type Client struct {
 	cs *kubernetes.Clientset
 }
 
-func NewClient(cfg *config.K8sConfig) (*Client, error) {
-	var restCfg *rest.Config
-	var err error
-	if cfg.ConfigPath != "" {
-		restCfg, err = clientcmd.BuildConfigFromFlags("", cfg.ConfigPath)
-	} else {
-		restCfg, err = rest.InClusterConfig()
+func buildRestConfig(cfg *config.K8sConfig) (*rest.Config, error) {
+	if cfg.Token != "" {
+		return &rest.Config{Host: cfg.Host, BearerToken: cfg.Token, TLSClientConfig: rest.TLSClientConfig{Insecure: true}}, nil
 	}
+	if cfg.ConfigPath != "" {
+		return clientcmd.BuildConfigFromFlags("", cfg.ConfigPath)
+	}
+	return rest.InClusterConfig()
+}
+
+func NewClient(cfg *config.K8sConfig) (*Client, error) {
+	restCfg, err := buildRestConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("k8s config: %w", err)
 	}

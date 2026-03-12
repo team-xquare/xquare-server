@@ -12,8 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/team-xquare/xquare-server/internal/config"
 	"github.com/team-xquare/xquare-server/internal/domain"
@@ -40,13 +38,7 @@ type WorkflowInfo struct {
 }
 
 func NewWorkflowClient(cfg *config.K8sConfig, k8sClient *Client) (*WorkflowClient, error) {
-	var restCfg *rest.Config
-	var err error
-	if cfg.ConfigPath != "" {
-		restCfg, err = clientcmd.BuildConfigFromFlags("", cfg.ConfigPath)
-	} else {
-		restCfg, err = rest.InClusterConfig()
-	}
+	restCfg, err := buildRestConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("k8s config: %w", err)
 	}
