@@ -279,6 +279,16 @@ func ValidTriggerPaths(paths []string) error {
 	return nil
 }
 
+// ValidEndpoints returns an error if any endpoint has an invalid port number.
+func ValidEndpoints(endpoints []Endpoint) error {
+	for _, ep := range endpoints {
+		if ep.Port < 1 || ep.Port > 65535 {
+			return fmt.Errorf("endpoint port %d is out of range (must be 1-65535)", ep.Port)
+		}
+	}
+	return nil
+}
+
 // ValidRouteHost returns an error if the hostname is a reserved infrastructure domain.
 // Blocked patterns:
 //   - *-xquare-infra.dsmhs.kr  (harbor, argocd, argocdwebhook, argo-events, argo-workflows, vault, longhorn, goldilocks)
