@@ -101,10 +101,15 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// Auth (public) — callback rate-limited by IP (no account available yet)
+	// Rate limiters (shared instances — one bucket map per limiter)
+	authRL := middleware.RateLimitByIP(5, time.Minute)          // login: 5/min per IP
+	createRL := middleware.RateLimitByAccount(10, time.Hour)    // resource creation: 10/hr per account
+	redeployRL := middleware.RateLimitByAccount(3, time.Minute) // CI trigger: 3/min per account
+
+	// Auth (public) — rate-limited by IP (no account available yet)
 	auth := r.Group("/auth")
 	{
-		auth.POST("/github/callback", middleware.RateLimitByIP(20, time.Minute), authH.GitHubCallback)
+		auth.POST("/github/callback", authRL, authH.GitHubCallback)
 		auth.GET("/me", middleware.Auth(cfg.JWT.Secret), authH.Me)
 	}
 
@@ -119,9 +124,9 @@ func main() {
 			admin.DELETE("/allowlist/:username", allowlistH.Remove)
 		}
 
-		// Projects (list + create are not project-scoped)
+		// Projects
 		api.GET("/projects", projectH.List)
-		api.POST("/projects", projectH.Create)
+		api.POST("/projects", createRL, projectH.Create)
 
 		// All project-specific routes require project ownership
 		proj := api.Group("/projects/:project", middleware.ProjectAccess(gitopsClient, cfg.JWT.AdminIDs))
@@ -138,7 +143,7 @@ func main() {
 			apps := proj.Group("/apps")
 			{
 				apps.GET("", appH.List)
-				apps.POST("", appH.Create)
+				apps.POST("", createRL, appH.Create)
 
 				// App-specific routes: verify :app belongs to this project before dispatching
 				app := apps.Group("/:app", middleware.AppAccess())
@@ -147,8 +152,7 @@ func main() {
 					app.PUT("", appH.Update)
 					app.DELETE("", appH.Delete)
 					app.GET("/status", appH.Status)
-					// Redeploy rate-limited per account (max 10 triggers/min)
-				app.POST("/redeploy", middleware.RateLimitByAccount(10, time.Minute), appH.Redeploy)
+					app.POST("/redeploy", redeployRL, appH.Redeploy)
 					app.GET("/logs", logsH.Stream)
 					app.GET("/builds", buildsH.List)
 					app.GET("/builds/:workflow/logs", buildsH.StreamLogs)
@@ -169,7 +173,7 @@ func main() {
 			addons := proj.Group("/addons")
 			{
 				addons.GET("", addonH.List)
-				addons.POST("", addonH.Create)
+				addons.POST("", createRL, addonH.Create)
 				addons.DELETE("/:addon", addonH.Delete)
 				addons.GET("/:addon/connection", addonH.Connection)
 			}
