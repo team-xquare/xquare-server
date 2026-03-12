@@ -185,9 +185,14 @@ func (h *AppHandler) Redeploy(c *gin.Context) {
 		return
 	}
 
+	// If no user token provided, use GitHub App installation token
 	if token == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "X-GitHub-Token header required for redeploy"})
-		return
+		installToken, err := h.gh.GetInstallationToken(c.Request.Context(), target.GitHub.InstallationID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "get installation token: " + err.Error()})
+			return
+		}
+		token = installToken
 	}
 
 	sha, err := h.gh.GetLatestCommitSHA(c.Request.Context(), token,
