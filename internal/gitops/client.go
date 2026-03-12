@@ -74,6 +74,35 @@ func (c *Client) ensureRepoFresh(forcePull bool) (*git.Repository, error) {
 	return repo, nil
 }
 
+// AllowedUserIDs reads allowed-users.yaml and returns the set of allowed GitHub user IDs.
+// Returns nil (allow all) if the file does not exist.
+func (c *Client) AllowedUserIDs() (map[int64]struct{}, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, err := c.ensureRepo(); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(c.repoDir, "allowed-users.yaml")
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil // no file → allow all
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read allowed-users.yaml: %w", err)
+	}
+	var cfg struct {
+		Users []int64 `yaml:"users"`
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parse allowed-users.yaml: %w", err)
+	}
+	set := make(map[int64]struct{}, len(cfg.Users))
+	for _, id := range cfg.Users {
+		set[id] = struct{}{}
+	}
+	return set, nil
+}
+
 // ListProjects returns all project names from projects/*.yaml
 func (c *Client) ListProjects() ([]string, error) {
 	c.mu.Lock()

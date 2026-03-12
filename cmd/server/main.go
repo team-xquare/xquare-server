@@ -76,7 +76,7 @@ func main() {
 	}
 
 	// Protected routes
-	api := r.Group("/", middleware.Auth(cfg.JWT.Secret))
+	api := r.Group("/", middleware.Auth(cfg.JWT.Secret), middleware.Allowlist(gitopsClient))
 	{
 		// Projects (list + create are not project-scoped)
 		api.GET("/projects", projectH.List)
