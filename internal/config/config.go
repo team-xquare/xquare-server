@@ -67,7 +67,7 @@ func Load() (*Config, error) {
 		},
 		JWT: JWTConfig{
 			Secret:     secret,
-			AccessExp:  24,
+			AccessExp:  168, // 7 days
 			RefreshExp: 30,
 			AdminIDs:   parseIDList(os.Getenv("ADMIN_GITHUB_IDS")),
 		},
