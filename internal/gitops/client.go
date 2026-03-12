@@ -16,11 +16,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const pullCacheTTL = 5 * time.Second
+
 type Client struct {
-	cfg     *config.GitOpsConfig
-	repoURL string
-	repoDir string
-	mu      sync.Mutex
+	cfg       *config.GitOpsConfig
+	repoURL   string
+	repoDir   string
+	mu        sync.Mutex
+	lastPull  time.Time
 }
 
 func NewClient(cfg *config.GitOpsConfig) *Client {
@@ -33,8 +36,14 @@ func (c *Client) auth() *http.BasicAuth {
 	return &http.BasicAuth{Username: "x-access-token", Password: c.cfg.Token}
 }
 
-// ensureRepo clones or pulls the repo (must be called with lock held)
+// ensureRepo clones or pulls the repo (must be called with lock held).
+// pull은 pullCacheTTL 이내 재요청 시 skip (read 성능 최적화).
 func (c *Client) ensureRepo() (*git.Repository, error) {
+	return c.ensureRepoFresh(false)
+}
+
+// ensureRepoFresh는 forcePull=true 시 캐시 무시하고 pull한다 (write 직전).
+func (c *Client) ensureRepoFresh(forcePull bool) (*git.Repository, error) {
 	repo, err := git.PlainOpen(c.repoDir)
 	if err == git.ErrRepositoryNotExists {
 		repo, err = git.PlainClone(c.repoDir, false, &git.CloneOptions{
@@ -44,10 +53,15 @@ func (c *Client) ensureRepo() (*git.Repository, error) {
 		if err != nil {
 			return nil, fmt.Errorf("clone: %w", err)
 		}
+		c.lastPull = time.Now()
 		return repo, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("open repo: %w", err)
+	}
+	// skip pull if within TTL and not forced
+	if !forcePull && time.Since(c.lastPull) < pullCacheTTL {
+		return repo, nil
 	}
 	wt, err := repo.Worktree()
 	if err != nil {
@@ -56,6 +70,7 @@ func (c *Client) ensureRepo() (*git.Repository, error) {
 	if err := wt.Pull(&git.PullOptions{Auth: c.auth(), Force: true}); err != nil && err != git.NoErrAlreadyUpToDate {
 		return nil, fmt.Errorf("pull: %w", err)
 	}
+	c.lastPull = time.Now()
 	return repo, nil
 }
 
@@ -109,7 +124,7 @@ func (c *Client) readProject(name string) (*domain.Project, error) {
 func (c *Client) CreateProject(name string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	repo, err := c.ensureRepo()
+	repo, err := c.ensureRepoFresh(true)
 	if err != nil {
 		return err
 	}
@@ -125,7 +140,7 @@ func (c *Client) CreateProject(name string) error {
 func (c *Client) DeleteProject(name string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	repo, err := c.ensureRepo()
+	repo, err := c.ensureRepoFresh(true)
 	if err != nil {
 		return err
 	}
@@ -254,7 +269,7 @@ func (c *Client) CheckDomainConflict(excludeProject, excludeApp string, domains 
 
 // retryUpdate reads, mutates, writes, and pushes with retry on conflict
 func (c *Client) retryUpdate(project string, mutate func(*domain.Project) error, commitMsg string) error {
-	repo, err := c.ensureRepo()
+	repo, err := c.ensureRepoFresh(true)
 	if err != nil {
 		return err
 	}
