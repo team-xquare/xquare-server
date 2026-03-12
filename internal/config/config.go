@@ -56,12 +56,17 @@ type K8sConfig struct {
 }
 
 func Load() (*Config, error) {
+	secret := requireEnv("JWT_SECRET")
+	if len(secret) < 32 {
+		fmt.Fprintf(os.Stderr, "warn: JWT_SECRET is shorter than 32 bytes (%d); use a cryptographically random secret of at least 256 bits\n", len(secret))
+	}
+
 	cfg := &Config{
 		Server: ServerConfig{
 			Port: getEnv("PORT", "8080"),
 		},
 		JWT: JWTConfig{
-			Secret:     requireEnv("JWT_SECRET"),
+			Secret:     secret,
 			AccessExp:  24,
 			RefreshExp: 30,
 			AdminIDs:   parseIDList(os.Getenv("ADMIN_GITHUB_IDS")),
