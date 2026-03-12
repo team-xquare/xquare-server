@@ -88,7 +88,7 @@ func (h *AddonHandler) Create(c *gin.Context) {
 		return
 	}
 
-	if err := h.gitops.AddAddon(project, addon); err != nil {
+	if err := h.gitops.AddAddon(project, addon, c.GetString("username")); err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
@@ -105,7 +105,7 @@ func (h *AddonHandler) Delete(c *gin.Context) {
 	project := c.Param("project")
 	addonName := c.Param("addon")
 
-	if err := h.gitops.DeleteAddon(project, addonName); err != nil {
+	if err := h.gitops.DeleteAddon(project, addonName, c.GetString("username")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

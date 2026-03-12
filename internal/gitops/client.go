@@ -121,7 +121,7 @@ func (c *Client) readProject(name string) (*domain.Project, error) {
 }
 
 // CreateProject creates a new empty projects/{name}.yaml with the creator as first owner.
-func (c *Client) CreateProject(name string, owner domain.Owner) error {
+func (c *Client) CreateProject(name string, owner domain.Owner, actor string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	repo, err := c.ensureRepoFresh(true)
@@ -137,11 +137,11 @@ func (c *Client) CreateProject(name string, owner domain.Owner) error {
 		Applications: []domain.Application{},
 		Addons:       []domain.Addon{},
 	}
-	return c.writeAndPush(repo, name, &p, fmt.Sprintf("feat: create project %s", name))
+	return c.writeAndPush(repo, name, &p, fmt.Sprintf("feat: create project %s [actor: %s]", name, actor))
 }
 
 // AddProjectMember adds a GitHub user as a project owner (identified by ID).
-func (c *Client) AddProjectMember(project string, owner domain.Owner) error {
+func (c *Client) AddProjectMember(project string, owner domain.Owner, actor string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
@@ -154,11 +154,11 @@ func (c *Client) AddProjectMember(project string, owner domain.Owner) error {
 		}
 		p.Owners = append(p.Owners, owner)
 		return nil
-	}, fmt.Sprintf("feat: add member %s to project %s", owner.Username, project))
+	}, fmt.Sprintf("feat: add member %s to project %s [actor: %s]", owner.Username, project, actor))
 }
 
 // RemoveProjectMember removes a project owner by GitHub ID.
-func (c *Client) RemoveProjectMember(project string, githubID int64) error {
+func (c *Client) RemoveProjectMember(project string, githubID int64, targetUsername, actor string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
@@ -170,11 +170,11 @@ func (c *Client) RemoveProjectMember(project string, githubID int64) error {
 		}
 		p.Owners = owners
 		return nil
-	}, fmt.Sprintf("feat: remove member %d from project %s", githubID, project))
+	}, fmt.Sprintf("feat: remove member %s from project %s [actor: %s]", targetUsername, project, actor))
 }
 
 // DeleteProject removes projects/{name}.yaml and pushes
-func (c *Client) DeleteProject(name string) error {
+func (c *Client) DeleteProject(name, actor string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	repo, err := c.ensureRepoFresh(true)
@@ -186,11 +186,11 @@ func (c *Client) DeleteProject(name string) error {
 	if _, err := wt.Remove(relPath); err != nil {
 		return fmt.Errorf("remove: %w", err)
 	}
-	return c.commit(repo, fmt.Sprintf("feat: delete project %s", name))
+	return c.commit(repo, fmt.Sprintf("feat: delete project %s [actor: %s]", name, actor))
 }
 
 // AddApplication adds an application to projects/{project}.yaml and pushes
-func (c *Client) AddApplication(project string, app domain.Application) error {
+func (c *Client) AddApplication(project string, app domain.Application, actor string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
@@ -201,11 +201,11 @@ func (c *Client) AddApplication(project string, app domain.Application) error {
 		}
 		p.Applications = append(p.Applications, app)
 		return nil
-	}, fmt.Sprintf("feat: add application %s to %s", app.Name, project))
+	}, fmt.Sprintf("feat: add application %s to %s [actor: %s]", app.Name, project, actor))
 }
 
 // UpdateApplication updates an existing application
-func (c *Client) UpdateApplication(project string, app domain.Application) error {
+func (c *Client) UpdateApplication(project string, app domain.Application, actor string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
@@ -218,11 +218,11 @@ func (c *Client) UpdateApplication(project string, app domain.Application) error
 			}
 		}
 		return fmt.Errorf("application %q not found in project %q", app.Name, project)
-	}, fmt.Sprintf("feat: update application %s in %s", app.Name, project))
+	}, fmt.Sprintf("feat: update application %s in %s [actor: %s]", app.Name, project, actor))
 }
 
 // DeleteApplication removes an application from the project
-func (c *Client) DeleteApplication(project, appName string) error {
+func (c *Client) DeleteApplication(project, appName, actor string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
@@ -233,11 +233,11 @@ func (c *Client) DeleteApplication(project, appName string) error {
 			}
 		}
 		return fmt.Errorf("application %q not found", appName)
-	}, fmt.Sprintf("feat: delete application %s from %s", appName, project))
+	}, fmt.Sprintf("feat: delete application %s from %s [actor: %s]", appName, project, actor))
 }
 
 // AddAddon adds an addon to the project
-func (c *Client) AddAddon(project string, addon domain.Addon) error {
+func (c *Client) AddAddon(project string, addon domain.Addon, actor string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
@@ -248,11 +248,11 @@ func (c *Client) AddAddon(project string, addon domain.Addon) error {
 		}
 		p.Addons = append(p.Addons, addon)
 		return nil
-	}, fmt.Sprintf("feat: add addon %s to %s", addon.Name, project))
+	}, fmt.Sprintf("feat: add addon %s to %s [actor: %s]", addon.Name, project, actor))
 }
 
 // DeleteAddon removes an addon from the project
-func (c *Client) DeleteAddon(project, addonName string) error {
+func (c *Client) DeleteAddon(project, addonName, actor string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
@@ -263,7 +263,7 @@ func (c *Client) DeleteAddon(project, addonName string) error {
 			}
 		}
 		return fmt.Errorf("addon %q not found", addonName)
-	}, fmt.Sprintf("feat: delete addon %s from %s", addonName, project))
+	}, fmt.Sprintf("feat: delete addon %s from %s [actor: %s]", addonName, project, actor))
 }
 
 // CheckDomainConflict checks if a domain is already used across all projects

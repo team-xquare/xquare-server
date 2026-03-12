@@ -168,7 +168,7 @@ func (h *AppHandler) Create(c *gin.Context) {
 		}
 	}
 
-	if err := h.gitops.AddApplication(project, app); err != nil {
+	if err := h.gitops.AddApplication(project, app, c.GetString("username")); err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
@@ -208,7 +208,7 @@ func (h *AppHandler) Update(c *gin.Context) {
 		}
 	}
 
-	if err := h.gitops.UpdateApplication(project, updated); err != nil {
+	if err := h.gitops.UpdateApplication(project, updated, c.GetString("username")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -220,7 +220,7 @@ func (h *AppHandler) Delete(c *gin.Context) {
 	project := c.Param("project")
 	app := c.Param("app")
 
-	if err := h.gitops.DeleteApplication(project, app); err != nil {
+	if err := h.gitops.DeleteApplication(project, app, c.GetString("username")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

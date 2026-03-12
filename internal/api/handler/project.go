@@ -108,7 +108,7 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 		ID:       c.GetInt64("githubId"),
 		Username: c.GetString("username"),
 	}
-	if err := h.gitops.CreateProject(req.Name, owner); err != nil {
+	if err := h.gitops.CreateProject(req.Name, owner, owner.Username); err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
@@ -127,7 +127,7 @@ func (h *ProjectHandler) Delete(c *gin.Context) {
 	p, _ := c.Get("project")
 	proj := p.(*domain.Project)
 
-	if err := h.gitops.DeleteProject(project); err != nil {
+	if err := h.gitops.DeleteProject(project, c.GetString("username")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -166,7 +166,7 @@ func (h *ProjectHandler) AddMember(c *gin.Context) {
 	}
 
 	owner := domain.Owner{ID: user.ID, Username: user.Login}
-	if err := h.gitops.AddProjectMember(project, owner); err != nil {
+	if err := h.gitops.AddProjectMember(project, owner, c.GetString("username")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -185,7 +185,7 @@ func (h *ProjectHandler) RemoveMember(c *gin.Context) {
 		return
 	}
 
-	if err := h.gitops.RemoveProjectMember(project, user.ID); err != nil {
+	if err := h.gitops.RemoveProjectMember(project, user.ID, targetUsername, c.GetString("username")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
