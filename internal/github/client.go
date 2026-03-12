@@ -196,6 +196,65 @@ func (c *Client) GetBranchSHA(ctx context.Context, owner, repo, branch string) (
 	return result.Commit.SHA, nil
 }
 
+// getInstallationToken exchanges a GitHub App JWT for an installation access token.
+func (c *Client) getInstallationToken(ctx context.Context, installationID string) (string, error) {
+	appToken, err := c.appJWT()
+	if err != nil {
+		return "", fmt.Errorf("app jwt: %w", err)
+	}
+	apiURL := fmt.Sprintf("%s/app/installations/%s/access_tokens", apiBase, url.PathEscape(installationID))
+	req, _ := http.NewRequestWithContext(ctx, "POST", apiURL, nil)
+	req.Header.Set("Authorization", "Bearer "+appToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("installation token request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("installation token: unexpected status %d", resp.StatusCode)
+	}
+	var result struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("installation token decode: %w", err)
+	}
+	return result.Token, nil
+}
+
+// VerifyRepoAccess checks that the given GitHub user is a member of the repo's owner
+// (org or personal account). For personal repos, the owner must match the username.
+// For org repos, the user must be a member of the org.
+// This prevents a user from registering another team's repo as their app target.
+func (c *Client) VerifyRepoAccess(ctx context.Context, installationID, owner, repo, username string) error {
+	// Personal repo: owner is the user themselves
+	if strings.EqualFold(owner, username) {
+		return nil
+	}
+	// Org repo: verify org membership using the installation token
+	token, err := c.getInstallationToken(ctx, installationID)
+	if err != nil {
+		return fmt.Errorf("cannot verify org membership for %s: %w", owner, err)
+	}
+	apiURL := fmt.Sprintf("%s/orgs/%s/members/%s", apiBase, url.PathEscape(owner), url.PathEscape(username))
+	req, _ := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("verify org membership: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent {
+		return nil // user is an org member
+	}
+	if resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("user %q is not a member of GitHub org %q — cannot use this repository", username, owner)
+	}
+	return fmt.Errorf("org membership check returned unexpected status %d for %s/%s", resp.StatusCode, owner, repo)
+}
+
 // GetRepoInstallationID returns the GitHub App installation ID for a repo.
 // Returns ErrAppNotInstalled if the app is not installed.
 func (c *Client) GetRepoInstallationID(ctx context.Context, owner, repo string) (string, error) {
