@@ -74,7 +74,7 @@ func friendlyK8sError(err error) string {
 	case strings.Contains(msg, "connection refused") || strings.Contains(msg, "no route to host"):
 		return "Cannot connect to the cluster. Please try again."
 	default:
-		return msg
+		return "an unexpected error occurred — please try again or contact an administrator"
 	}
 }
 

@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"hash/adler32"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -140,12 +141,16 @@ func (h *ProjectHandler) Delete(c *gin.Context) {
 	}
 
 	for _, app := range proj.Applications {
-		_ = h.vault.DeleteEnv(project, app.Name)
+		if err := h.vault.DeleteEnv(project, app.Name); err != nil {
+			log.Printf("warn: vault.DeleteEnv %s/%s: %v", project, app.Name, err)
+		}
 	}
 
 	// Delete K8s namespace (cascades Deployments, Services, PVCs, etc.)
 	if h.k8s != nil {
-		_ = h.k8s.DeleteNamespace(c.Request.Context(), project)
+		if err := h.k8s.DeleteNamespace(c.Request.Context(), project); err != nil {
+			log.Printf("warn: k8s.DeleteNamespace %s: %v", project, err)
+		}
 	}
 
 	c.Status(http.StatusNoContent)
