@@ -394,8 +394,11 @@ func (h *AppHandler) Tunnel(c *gin.Context) {
 	})
 }
 
-// validateEndpoints returns an error if any route uses a reserved infrastructure hostname.
+// validateEndpoints returns an error if any endpoint has an invalid port or reserved hostname.
 func validateEndpoints(endpoints []domain.Endpoint) error {
+	if err := domain.ValidEndpoints(endpoints); err != nil {
+		return err
+	}
 	for _, ep := range endpoints {
 		for _, route := range ep.Routes {
 			host := strings.SplitN(route, "/", 2)[0]

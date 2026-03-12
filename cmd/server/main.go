@@ -3,6 +3,9 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -58,9 +61,32 @@ func main() {
 		c.Next()
 	})
 
-	// CORS
+	// Security headers (API-only server, no HTML — still good defense-in-depth)
 	r.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("Referrer-Policy", "no-referrer")
+		c.Next()
+	})
+
+	// CORS — restrict to allowed origins from CORS_ORIGINS env var (comma-separated).
+	// Defaults to *.dsmhs.kr. Set "*" in CORS_ORIGINS only for local dev.
+	corsOrigins := os.Getenv("CORS_ORIGINS")
+	if corsOrigins == "" {
+		corsOrigins = "https://xquare-server.dsmhs.kr"
+	}
+	allowedOrigins := make(map[string]bool)
+	for _, o := range strings.Split(corsOrigins, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			allowedOrigins[o] = true
+		}
+	}
+	r.Use(func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
+		if origin != "" && (allowedOrigins["*"] || allowedOrigins[origin]) {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+		}
 		c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		if c.Request.Method == http.MethodOptions {
@@ -75,10 +101,10 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// Auth (public)
+	// Auth (public) — callback is rate-limited to 20 req/min per IP
 	auth := r.Group("/auth")
 	{
-		auth.POST("/github/callback", authH.GitHubCallback)
+		auth.POST("/github/callback", middleware.RateLimit(20, time.Minute), authH.GitHubCallback)
 		auth.GET("/me", middleware.Auth(cfg.JWT.Secret), authH.Me)
 	}
 
