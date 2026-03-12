@@ -130,6 +130,11 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 func (h *ProjectHandler) Delete(c *gin.Context) {
 	project := c.Param("project")
 
+	if !c.GetBool("isProjectAdmin") {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the project creator or an admin can delete a project"})
+		return
+	}
+
 	proj, ok := projectFromCtx(c)
 	if !ok {
 		return
@@ -167,6 +172,10 @@ func (h *ProjectHandler) ListMembers(c *gin.Context) {
 
 // POST /projects/:project/members  {"username": "github-login"}
 func (h *ProjectHandler) AddMember(c *gin.Context) {
+	if !c.GetBool("isProjectAdmin") {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the project creator or an admin can manage members"})
+		return
+	}
 	project := c.Param("project")
 
 	var req struct {
@@ -194,6 +203,10 @@ func (h *ProjectHandler) AddMember(c *gin.Context) {
 
 // DELETE /projects/:project/members/:username
 func (h *ProjectHandler) RemoveMember(c *gin.Context) {
+	if !c.GetBool("isProjectAdmin") {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the project creator or an admin can manage members"})
+		return
+	}
 	project := c.Param("project")
 	targetUsername := c.Param("username")
 
