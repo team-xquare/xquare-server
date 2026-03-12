@@ -229,6 +229,17 @@ func (wc *WorkflowClient) StreamWorkflowLogs(ctx context.Context, project, workf
 		container = target.Spec.Containers[0].Name
 	}
 
+	// Check if pod is still initializing before requesting logs
+	for _, cs := range target.Status.ContainerStatuses {
+		if cs.Name == container && cs.State.Waiting != nil {
+			reason := cs.State.Waiting.Reason
+			return nil, fmt.Errorf("build initializing (%s) — wait 15-30s and retry", reason)
+		}
+	}
+	if target.Status.Phase == corev1.PodPending {
+		return nil, fmt.Errorf("build initializing (pod pending) — wait 15-30s and retry")
+	}
+
 	tailLines := int64(500)
 	req := wc.cs.cs.CoreV1().Pods(ns).GetLogs(target.Name, &corev1.PodLogOptions{
 		Container: container,

@@ -3,6 +3,7 @@ package handler
 import (
 	"bufio"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -59,7 +60,11 @@ func (h *BuildsHandler) StreamLogs(c *gin.Context) {
 func (h *BuildsHandler) streamHTTP(c *gin.Context, project, workflowName string, follow bool) {
 	rc, err := h.wf.StreamWorkflowLogs(c.Request.Context(), project, workflowName, follow)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if strings.Contains(err.Error(), "build initializing") {
+			c.JSON(http.StatusAccepted, gin.H{"status": "initializing", "message": err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
 		return
 	}
 	defer rc.Close()
