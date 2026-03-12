@@ -30,6 +30,9 @@ type JWTConfig struct {
 type GitHubConfig struct {
 	ClientID     string
 	ClientSecret string
+	AppID        string
+	AppSlug      string // used for install URL: https://github.com/apps/{slug}/installations/new
+	PrivateKey   string // PEM content
 }
 
 type GitOpsConfig struct {
@@ -63,6 +66,9 @@ func Load() (*Config, error) {
 		GitHub: GitHubConfig{
 			ClientID:     requireEnv("GITHUB_CLIENT_ID"),
 			ClientSecret: requireEnv("GITHUB_CLIENT_SECRET"),
+			AppID:        getEnv("GITHUB_APP_ID", "1172114"),
+			AppSlug:      getEnv("GITHUB_APP_SLUG", "xquare-dsm"),
+			PrivateKey:   os.Getenv("GITHUB_APP_PRIVATE_KEY"),
 		},
 		GitOps: GitOpsConfig{
 			Token:     requireEnv("GITOPS_TOKEN"),

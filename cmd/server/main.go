@@ -33,7 +33,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("vault: %v", err)
 	}
-	githubClient := github.NewClient()
+	githubClient := github.NewClient(&cfg.GitHub)
 
 	wfClient, err := k8s.NewWorkflowClient(&cfg.K8s, k8sClient)
 	if err != nil {
@@ -43,7 +43,7 @@ func main() {
 	// Init handlers
 	authH := handler.NewAuthHandler(githubClient, cfg)
 	projectH := handler.NewProjectHandler(gitopsClient, vaultClient, githubClient, cfg.JWT.AdminIDs)
-	appH := handler.NewAppHandler(gitopsClient, k8sClient, vaultClient, wfClient)
+	appH := handler.NewAppHandler(gitopsClient, k8sClient, vaultClient, wfClient, githubClient)
 	envH := handler.NewEnvHandler(vaultClient)
 	addonH := handler.NewAddonHandler(gitopsClient, k8sClient)
 	logsH := handler.NewLogsHandler(k8sClient)

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -9,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/team-xquare/xquare-server/internal/domain"
+	"github.com/team-xquare/xquare-server/internal/github"
 	"github.com/team-xquare/xquare-server/internal/gitops"
 	"github.com/team-xquare/xquare-server/internal/k8s"
 	"github.com/team-xquare/xquare-server/internal/vault"
@@ -27,14 +29,15 @@ func validateName(name string) error {
 }
 
 type AppHandler struct {
-	gitops *gitops.Client
-	k8s    *k8s.Client
-	vault  *vault.Client
-	wf     *k8s.WorkflowClient
+	gitops  *gitops.Client
+	k8s     *k8s.Client
+	vault   *vault.Client
+	wf      *k8s.WorkflowClient
+	github  *github.Client
 }
 
-func NewAppHandler(g *gitops.Client, k *k8s.Client, v *vault.Client, wf *k8s.WorkflowClient) *AppHandler {
-	return &AppHandler{gitops: g, k8s: k, vault: v, wf: wf}
+func NewAppHandler(g *gitops.Client, k *k8s.Client, v *vault.Client, wf *k8s.WorkflowClient, gh *github.Client) *AppHandler {
+	return &AppHandler{gitops: g, k8s: k, vault: v, wf: wf, github: gh}
 }
 
 // GET /projects/:project/apps
@@ -84,6 +87,22 @@ func (h *AppHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// Auto-resolve GitHub App installation ID
+	installID, err := h.github.GetRepoInstallationID(c.Request.Context(), app.GitHub.Owner, app.GitHub.Repo)
+	if err != nil {
+		var notInstalled *github.ErrAppNotInstalled
+		if errors.As(err, &notInstalled) {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"error":       fmt.Sprintf("GitHub App not installed on %s/%s", app.GitHub.Owner, app.GitHub.Repo),
+				"install_url": notInstalled.InstallURL,
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	app.GitHub.InstallationID = installID
+
 	// Check domain conflicts
 	var domains []string
 	for _, ep := range app.Endpoints {
@@ -105,9 +124,7 @@ func (h *AppHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// Initialize empty Vault entry so VSO can sync it
 	_ = h.vault.InitEnv(project, app.Name)
-
 	c.JSON(http.StatusCreated, app)
 }
 
