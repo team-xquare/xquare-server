@@ -95,7 +95,7 @@ func (h *BuildsHandler) streamWS(c *gin.Context, project, workflowName string, f
 	ctx := c.Request.Context()
 	rc, err := h.wf.StreamWorkflowLogs(ctx, project, workflowName, follow)
 	if err != nil {
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"`+err.Error()+`"}`))
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"build log stream unavailable"}`))
 		return
 	}
 	defer rc.Close()
