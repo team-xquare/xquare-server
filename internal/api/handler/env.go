@@ -95,6 +95,11 @@ func (h *EnvHandler) DeleteKey(c *gin.Context) {
 	app := c.Param("app")
 	key := c.Param("key")
 
+	if err := domain.ValidEnvKey(key); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	if err := h.vault.DeleteEnvKey(project, app, key); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
