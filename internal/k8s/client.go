@@ -126,7 +126,7 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 	return &AppStatus{
 		Name:      app,
 		Status:    status,
-		Scale:     Scale{Desired: dep.Status.Replicas, Running: dep.Status.ReadyReplicas},
+		Scale:     Scale{Desired: *dep.Spec.Replicas, Running: dep.Status.ReadyReplicas},
 		Version:   hash,
 		Instances: instances,
 	}, nil
