@@ -48,6 +48,7 @@ func main() {
 	addonH := handler.NewAddonHandler(gitopsClient, k8sClient)
 	logsH := handler.NewLogsHandler(k8sClient)
 	buildsH := handler.NewBuildsHandler(wfClient)
+	allowlistH := handler.NewAllowlistHandler(gitopsClient, githubClient, cfg.JWT.AdminIDs)
 
 	r := gin.Default()
 
@@ -78,6 +79,14 @@ func main() {
 	// Protected routes
 	api := r.Group("/", middleware.Auth(cfg.JWT.Secret), middleware.Allowlist(gitopsClient))
 	{
+		// Admin: allowlist management
+		admin := api.Group("/admin")
+		{
+			admin.GET("/allowlist", allowlistH.List)
+			admin.POST("/allowlist", allowlistH.Add)
+			admin.DELETE("/allowlist/:username", allowlistH.Remove)
+		}
+
 		// Projects (list + create are not project-scoped)
 		api.GET("/projects", projectH.List)
 		api.POST("/projects", projectH.Create)

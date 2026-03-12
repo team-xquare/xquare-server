@@ -74,6 +74,51 @@ func (c *Client) ensureRepoFresh(forcePull bool) (*git.Repository, error) {
 	return repo, nil
 }
 
+type AllowedUser struct {
+	ID       int64  `yaml:"id"`
+	Username string `yaml:"username"`
+}
+
+type allowedUsersFile struct {
+	Users []AllowedUser `yaml:"users"`
+}
+
+func (c *Client) readAllowedUsers() (*allowedUsersFile, error) {
+	path := filepath.Join(c.repoDir, "allowed-users.yaml")
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read allowed-users.yaml: %w", err)
+	}
+	var f allowedUsersFile
+	if err := yaml.Unmarshal(data, &f); err != nil {
+		return nil, fmt.Errorf("parse allowed-users.yaml: %w", err)
+	}
+	return &f, nil
+}
+
+func (c *Client) writeAllowedUsers(actor string, f *allowedUsersFile) error {
+	repo, err := c.ensureRepoFresh(true)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(c.repoDir, "allowed-users.yaml")
+	data, err := yaml.Marshal(f)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return err
+	}
+	wt, _ := repo.Worktree()
+	if _, err := wt.Add("allowed-users.yaml"); err != nil {
+		return err
+	}
+	return c.commit(repo, fmt.Sprintf("feat: update allowlist [actor: %s]", actor))
+}
+
 // AllowedUserIDs reads allowed-users.yaml and returns the set of allowed GitHub user IDs.
 // Returns nil (allow all) if the file does not exist.
 func (c *Client) AllowedUserIDs() (map[int64]struct{}, error) {
@@ -82,25 +127,88 @@ func (c *Client) AllowedUserIDs() (map[int64]struct{}, error) {
 	if _, err := c.ensureRepo(); err != nil {
 		return nil, err
 	}
-	path := filepath.Join(c.repoDir, "allowed-users.yaml")
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
+	f, err := c.readAllowedUsers()
+	if err != nil {
+		return nil, err
+	}
+	if f == nil {
 		return nil, nil // no file → allow all
 	}
-	if err != nil {
-		return nil, fmt.Errorf("read allowed-users.yaml: %w", err)
-	}
-	var cfg struct {
-		Users []int64 `yaml:"users"`
-	}
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parse allowed-users.yaml: %w", err)
-	}
-	set := make(map[int64]struct{}, len(cfg.Users))
-	for _, id := range cfg.Users {
-		set[id] = struct{}{}
+	set := make(map[int64]struct{}, len(f.Users))
+	for _, u := range f.Users {
+		set[u.ID] = struct{}{}
 	}
 	return set, nil
+}
+
+// ListAllowedUsers returns the full list of allowed users.
+func (c *Client) ListAllowedUsers() ([]AllowedUser, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, err := c.ensureRepo(); err != nil {
+		return nil, err
+	}
+	f, err := c.readAllowedUsers()
+	if err != nil {
+		return nil, err
+	}
+	if f == nil {
+		return []AllowedUser{}, nil
+	}
+	return f.Users, nil
+}
+
+// AddAllowedUser adds a user to the allowlist. Errors if already present.
+func (c *Client) AddAllowedUser(actor string, user AllowedUser) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, err := c.ensureRepo(); err != nil {
+		return err
+	}
+	f, err := c.readAllowedUsers()
+	if err != nil {
+		return err
+	}
+	if f == nil {
+		f = &allowedUsersFile{}
+	}
+	for _, u := range f.Users {
+		if u.ID == user.ID {
+			return fmt.Errorf("user %q (id=%d) is already in the allowlist", user.Username, user.ID)
+		}
+	}
+	f.Users = append(f.Users, user)
+	return c.writeAllowedUsers(actor, f)
+}
+
+// RemoveAllowedUser removes a user from the allowlist by username.
+func (c *Client) RemoveAllowedUser(actor, username string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, err := c.ensureRepo(); err != nil {
+		return err
+	}
+	f, err := c.readAllowedUsers()
+	if err != nil {
+		return err
+	}
+	if f == nil {
+		return fmt.Errorf("user %q not found in allowlist", username)
+	}
+	filtered := f.Users[:0]
+	found := false
+	for _, u := range f.Users {
+		if u.Username == username {
+			found = true
+			continue
+		}
+		filtered = append(filtered, u)
+	}
+	if !found {
+		return fmt.Errorf("user %q not found in allowlist", username)
+	}
+	f.Users = filtered
+	return c.writeAllowedUsers(actor, f)
 }
 
 // ListProjects returns all project names from projects/*.yaml
