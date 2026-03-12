@@ -52,6 +52,7 @@ type K8sConfig struct {
 	ConfigPath string // path to kubeconfig, empty = in-cluster
 	Token      string // bearer token; if set, overrides ConfigPath/in-cluster
 	Host       string // API server host when Token is used; defaults to in-cluster
+	CAData     string // PEM CA cert for TLS verification when using Token auth; empty = skip verification
 }
 
 func Load() (*Config, error) {
@@ -87,6 +88,7 @@ func Load() (*Config, error) {
 			ConfigPath: os.Getenv("KUBECONFIG"),
 			Token:      os.Getenv("K8S_TOKEN"),
 			Host:       getEnv("K8S_HOST", "https://kubernetes.default.svc.cluster.local"),
+			CAData:     os.Getenv("K8S_CA_CERT"),
 		},
 	}
 	return cfg, nil

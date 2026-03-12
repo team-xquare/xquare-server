@@ -12,8 +12,19 @@ import (
 	"github.com/team-xquare/xquare-server/internal/k8s"
 )
 
+const maxTailLines = int64(5000)
+
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	// Only allow WebSocket upgrades from the same origin or from non-browser
+	// clients (which send no Origin header). Prevents CSRF-like WS hijacking.
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // non-browser client (CLI, etc.)
+		}
+		host := r.Host
+		return origin == "https://"+host || origin == "http://"+host
+	},
 }
 
 type LogsHandler struct {
@@ -36,15 +47,18 @@ func (h *LogsHandler) Stream(c *gin.Context) {
 			tailLines = n
 		}
 	}
+	if tailLines > maxTailLines {
+		tailLines = maxTailLines
+	}
+	if tailLines < 1 {
+		tailLines = 1
+	}
 	follow := c.Query("follow") != "false"
 
-	// WebSocket upgrade if requested
 	if websocket.IsWebSocketUpgrade(c.Request) {
 		h.streamWS(c, project, app, tailLines, follow)
 		return
 	}
-
-	// HTTP streaming (NDJSON / SSE-compatible)
 	h.streamHTTP(c, project, app, tailLines, follow)
 }
 
@@ -93,7 +107,7 @@ func (h *LogsHandler) streamWS(c *gin.Context, project, app string, tailLines in
 		if errors.As(err, &notDeployed) {
 			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"`+notDeployed.Error()+`","code":"not_deployed"}`))
 		} else {
-			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"`+err.Error()+`"}`))
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"log stream unavailable"}`))
 		}
 		return
 	}

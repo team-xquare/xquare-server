@@ -1,5 +1,10 @@
 package domain
 
+import (
+	"fmt"
+	"strings"
+)
+
 // Owner represents a project owner identified by their immutable GitHub ID.
 // Username is cached for display only and may be stale if the user renames.
 type Owner struct {
@@ -185,4 +190,54 @@ func VaultPath(project, app string) string {
 // K8sSecretName returns the K8s secret name for an app
 func K8sSecretName(project, app string) string {
 	return project + "-" + app
+}
+
+// ValidBuildCommand returns an error if the command contains shell injection patterns.
+// Build commands run inside CI containers, but we still block obvious exfiltration
+// attempts (command substitution, null bytes).
+func ValidBuildCommand(cmd string) error {
+	if strings.ContainsRune(cmd, 0) {
+		return fmt.Errorf("build command must not contain null bytes")
+	}
+	if strings.Contains(cmd, "`") {
+		return fmt.Errorf("build command must not contain backticks (command substitution)")
+	}
+	if strings.Contains(cmd, "$(") {
+		return fmt.Errorf("build command must not contain $() (command substitution)")
+	}
+	return nil
+}
+
+// ValidFilePath returns an error if the path is absolute or contains path traversal.
+func ValidFilePath(path string) error {
+	if strings.HasPrefix(path, "/") {
+		return fmt.Errorf("path must be relative, not absolute")
+	}
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("path must not contain path traversal (..)")
+	}
+	if strings.ContainsRune(path, 0) {
+		return fmt.Errorf("path must not contain null bytes")
+	}
+	return nil
+}
+
+// ValidAddonType returns an error if the addon type is not in the allowlist.
+var validAddonTypes = map[string]bool{
+	"mysql":         true,
+	"postgresql":    true,
+	"redis":         true,
+	"mongodb":       true,
+	"kafka":         true,
+	"rabbitmq":      true,
+	"opensearch":    true,
+	"elasticsearch": true,
+	"qdrant":        true,
+}
+
+func ValidAddonType(t string) error {
+	if !validAddonTypes[t] {
+		return fmt.Errorf("unsupported addon type %q: must be one of mysql, postgresql, redis, mongodb, kafka, rabbitmq, opensearch, elasticsearch, qdrant", t)
+	}
+	return nil
 }

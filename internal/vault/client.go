@@ -3,6 +3,7 @@ package vault
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/team-xquare/xquare-server/internal/config"
@@ -12,6 +13,7 @@ import (
 type Client struct {
 	client *vaultapi.Client
 	mount  string
+	mu     sync.Mutex // guards read-modify-write operations
 }
 
 func NewClient(cfg *config.VaultConfig) (*Client, error) {
@@ -30,7 +32,7 @@ func (c *Client) GetEnv(project, app string) (map[string]string, error) {
 	path := fmt.Sprintf("%s/%s", c.mount, domain.VaultPath(project, app))
 	secret, err := c.client.Logical().Read(path)
 	if err != nil {
-		return nil, fmt.Errorf("vault read %s: %w", path, err)
+		return nil, fmt.Errorf("vault read: %w", err)
 	}
 	if secret == nil || secret.Data == nil {
 		return map[string]string{}, nil
@@ -56,13 +58,17 @@ func (c *Client) SetEnv(project, app string, vars map[string]string) error {
 	}
 	_, err := c.client.Logical().Write(path, data)
 	if err != nil {
-		return fmt.Errorf("vault write %s: %w", path, err)
+		return fmt.Errorf("vault write: %w", err)
 	}
 	return nil
 }
 
-// PatchEnv merges vars into existing Vault KV v1
+// PatchEnv merges vars into existing Vault KV v1.
+// Uses a mutex to prevent TOCTOU race conditions on concurrent PATCH requests.
 func (c *Client) PatchEnv(project, app string, vars map[string]string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	existing, err := c.GetEnv(project, app)
 	if err != nil {
 		return err
@@ -73,8 +79,12 @@ func (c *Client) PatchEnv(project, app string, vars map[string]string) error {
 	return c.SetEnv(project, app, existing)
 }
 
-// DeleteEnvKey removes a single key from Vault KV v1
+// DeleteEnvKey removes a single key from Vault KV v1.
+// Uses a mutex to prevent TOCTOU race conditions on concurrent DELETE requests.
 func (c *Client) DeleteEnvKey(project, app, key string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	existing, err := c.GetEnv(project, app)
 	if err != nil {
 		return err
