@@ -22,13 +22,8 @@ func NewAddonHandler(g *gitops.Client, k *k8s.Client) *AddonHandler {
 
 // GET /projects/:project/addons
 func (h *AddonHandler) List(c *gin.Context) {
-	project := c.Param("project")
-	p, err := h.gitops.GetProject(project)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"addons": p.Addons})
+	p, _ := c.Get("project")
+	c.JSON(http.StatusOK, gin.H{"addons": p.(*domain.Project).Addons})
 }
 
 // POST /projects/:project/addons
@@ -71,16 +66,11 @@ func (h *AddonHandler) Connection(c *gin.Context) {
 	project := c.Param("project")
 	addonName := c.Param("addon")
 
-	p, err := h.gitops.GetProject(project)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-
+	proj, _ := c.Get("project")
 	var addon *domain.Addon
-	for i := range p.Addons {
-		if p.Addons[i].Name == addonName {
-			addon = &p.Addons[i]
+	for i := range proj.(*domain.Project).Addons {
+		if proj.(*domain.Project).Addons[i].Name == addonName {
+			addon = &proj.(*domain.Project).Addons[i]
 			break
 		}
 	}

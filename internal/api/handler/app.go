@@ -39,26 +39,15 @@ func NewAppHandler(g *gitops.Client, k *k8s.Client, v *vault.Client, wf *k8s.Wor
 
 // GET /projects/:project/apps
 func (h *AppHandler) List(c *gin.Context) {
-	project := c.Param("project")
-	p, err := h.gitops.GetProject(project)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"applications": p.Applications})
+	p, _ := c.Get("project")
+	c.JSON(http.StatusOK, gin.H{"applications": p.(*domain.Project).Applications})
 }
 
 // GET /projects/:project/apps/:app
 func (h *AppHandler) Get(c *gin.Context) {
-	project := c.Param("project")
 	app := c.Param("app")
-
-	p, err := h.gitops.GetProject(project)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-	for _, a := range p.Applications {
+	p, _ := c.Get("project")
+	for _, a := range p.(*domain.Project).Applications {
 		if a.Name == app {
 			c.JSON(http.StatusOK, a)
 			return

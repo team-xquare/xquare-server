@@ -33,7 +33,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("vault: %v", err)
 	}
-	githubClient := github.NewClient(&cfg.GitHub)
+	githubClient := github.NewClient()
 
 	wfClient, err := k8s.NewWorkflowClient(&cfg.K8s, k8sClient)
 	if err != nil {
@@ -54,7 +54,7 @@ func main() {
 	// CORS
 	r.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-GitHub-Token")
+		c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)

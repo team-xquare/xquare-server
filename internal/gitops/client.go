@@ -268,6 +268,8 @@ func (c *Client) DeleteAddon(project, addonName string) error {
 
 // CheckDomainConflict checks if a domain is already used across all projects
 func (c *Client) CheckDomainConflict(excludeProject, excludeApp string, domains []string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if _, err := c.ensureRepo(); err != nil {
 		return err
 	}
