@@ -72,13 +72,19 @@ func (h *AllowlistHandler) Add(c *gin.Context) {
 }
 
 // DELETE /admin/allowlist/:username
+// Resolves username → GitHub ID to avoid removing the wrong user if an account is renamed.
 func (h *AllowlistHandler) Remove(c *gin.Context) {
 	if !h.isAdmin(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "admin only"})
 		return
 	}
 	username := c.Param("username")
-	if err := h.gitops.RemoveAllowedUser(c.GetString("username"), username); err != nil {
+	ghUser, err := h.github.GetUserByUsername(c.Request.Context(), username)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not resolve GitHub username"})
+		return
+	}
+	if err := h.gitops.RemoveAllowedUser(c.GetString("username"), ghUser.ID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
