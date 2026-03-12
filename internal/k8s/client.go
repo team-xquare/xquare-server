@@ -8,6 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -67,7 +68,7 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 
 	dep, err := c.cs.AppsV1().Deployments(ns).Get(ctx, app, metav1.GetOptions{})
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
+		if k8serrors.IsNotFound(err) {
 			return &AppStatus{Name: app, Status: "NotDeployed"}, nil
 		}
 		return nil, fmt.Errorf("get deployment: %w", err)
@@ -193,7 +194,7 @@ func (c *Client) NamespaceExists(ctx context.Context, project string) (bool, err
 	ns := domain.Namespace(project)
 	_, err := c.cs.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
+		if k8serrors.IsNotFound(err) {
 			return false, nil
 		}
 		return false, err

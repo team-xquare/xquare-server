@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -48,7 +49,7 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 	}
 
 	if err := h.gitops.CreateProject(req.Name); err != nil {
-		if err.Error() == "project already exists: "+req.Name {
+		if strings.Contains(err.Error(), "already exists") {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
