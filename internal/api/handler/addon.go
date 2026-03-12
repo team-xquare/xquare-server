@@ -46,8 +46,11 @@ func NewAddonHandler(g *gitops.Client, k *k8s.Client) *AddonHandler {
 // GET /projects/:project/addons
 func (h *AddonHandler) List(c *gin.Context) {
 	project := c.Param("project")
-	p, _ := c.Get("project")
-	addons := p.(*domain.Project).Addons
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
+	addons := proj.Addons
 
 	type addonItem struct {
 		Name    string `json:"name"`
@@ -123,11 +126,14 @@ func (h *AddonHandler) Connection(c *gin.Context) {
 	project := c.Param("project")
 	addonName := c.Param("addon")
 
-	proj, _ := c.Get("project")
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
 	var addon *domain.Addon
-	for i := range proj.(*domain.Project).Addons {
-		if proj.(*domain.Project).Addons[i].Name == addonName {
-			addon = &proj.(*domain.Project).Addons[i]
+	for i := range proj.Addons {
+		if proj.Addons[i].Name == addonName {
+			addon = &proj.Addons[i]
 			break
 		}
 	}

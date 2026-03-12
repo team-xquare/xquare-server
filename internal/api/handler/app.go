@@ -95,15 +95,21 @@ func (h *AppHandler) isAdmin(githubID int64) bool {
 
 // GET /projects/:project/apps
 func (h *AppHandler) List(c *gin.Context) {
-	p, _ := c.Get("project")
-	c.JSON(http.StatusOK, gin.H{"applications": p.(*domain.Project).Applications})
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"applications": proj.Applications})
 }
 
 // GET /projects/:project/apps/:app
 func (h *AppHandler) Get(c *gin.Context) {
 	app := c.Param("app")
-	p, _ := c.Get("project")
-	for _, a := range p.(*domain.Project).Applications {
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
+	for _, a := range proj.Applications {
 		if a.Name == app {
 			c.JSON(http.StatusOK, a)
 			return
@@ -279,8 +285,11 @@ func (h *AppHandler) Update(c *gin.Context) {
 	}
 
 	// Preserve server-managed fields from existing app
-	p, _ := c.Get("project")
-	for _, existing := range p.(*domain.Project).Applications {
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
+	for _, existing := range proj.Applications {
 		if existing.Name == appName {
 			if updated.GitHub.InstallationID == "" {
 				updated.GitHub.InstallationID = existing.GitHub.InstallationID
@@ -327,10 +336,13 @@ func (h *AppHandler) Tunnel(c *gin.Context) {
 		return
 	}
 
-	p, _ := c.Get("project")
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
 	var ports []int
 	found := false
-	for _, a := range p.(*domain.Project).Applications {
+	for _, a := range proj.Applications {
 		if a.Name == appName {
 			found = true
 			for _, ep := range a.Endpoints {
@@ -502,9 +514,12 @@ func (h *AppHandler) Redeploy(c *gin.Context) {
 
 	// Resolve current SHA from GitHub so the workflow template takes the fast path
 	// (github-event-type=push) and skips the sh process-substitution JWT code.
-	p, _ := c.Get("project")
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
 	sha := ""
-	for _, a := range p.(*domain.Project).Applications {
+	for _, a := range proj.Applications {
 		if a.Name == app {
 			sha, _ = h.github.GetBranchSHA(c.Request.Context(), a.GitHub.Owner, a.GitHub.Repo, a.GitHub.Branch)
 			break

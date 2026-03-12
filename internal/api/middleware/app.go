@@ -19,7 +19,11 @@ func AppAccess() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "project context missing"})
 			return
 		}
-		p := proj.(*domain.Project)
+		p, ok := proj.(*domain.Project)
+		if !ok || p == nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "project context invalid"})
+			return
+		}
 		for _, a := range p.Applications {
 			if a.Name == appName {
 				c.Next()

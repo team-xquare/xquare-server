@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -27,8 +28,9 @@ func buildRestConfig(cfg *config.K8sConfig) (*rest.Config, error) {
 		if cfg.CAData != "" {
 			tlsCfg.CAData = []byte(cfg.CAData)
 		} else {
-			// No CA cert provided: skip TLS verification.
-			// Set K8S_CA_CERT env var to enable TLS verification.
+			// No CA cert provided: TLS verification is disabled.
+			// Set K8S_CA_CERT env var (PEM) to enable proper TLS verification.
+			log.Println("WARN: K8S_CA_CERT not set — K8s API TLS verification disabled (MITM risk)")
 			tlsCfg.Insecure = true
 		}
 		return &rest.Config{Host: cfg.Host, BearerToken: cfg.Token, TLSClientConfig: tlsCfg}, nil
