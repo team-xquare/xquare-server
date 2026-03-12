@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -243,7 +244,9 @@ func (h *AppHandler) Create(c *gin.Context) {
 		return
 	}
 
-	_ = h.vault.InitEnv(project, app.Name)
+	if err := h.vault.InitEnv(project, app.Name); err != nil {
+		log.Printf("warn: vault.InitEnv %s/%s: %v", project, app.Name, err)
+	}
 	c.JSON(http.StatusCreated, app)
 }
 

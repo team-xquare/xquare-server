@@ -83,12 +83,21 @@ type allowedUsersFile struct {
 	Users []AllowedUser `yaml:"users"`
 }
 
+const maxAllowedUsersFileBytes = 1 * 1024 * 1024 // 1 MiB
+
 func (c *Client) readAllowedUsers() (*allowedUsersFile, error) {
 	path := filepath.Join(c.repoDir, "allowed-users.yaml")
-	data, err := os.ReadFile(path)
+	fi, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
+	if err != nil {
+		return nil, fmt.Errorf("stat allowed-users.yaml: %w", err)
+	}
+	if fi.Size() > maxAllowedUsersFileBytes {
+		return nil, fmt.Errorf("allowed-users.yaml exceeds maximum size of %d bytes", maxAllowedUsersFileBytes)
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read allowed-users.yaml: %w", err)
 	}
@@ -241,13 +250,22 @@ func (c *Client) GetProject(name string) (*domain.Project, error) {
 	return c.readProject(name)
 }
 
+const maxProjectFileBytes = 1 * 1024 * 1024 // 1 MiB
+
 func (c *Client) readProject(name string) (*domain.Project, error) {
 	path := filepath.Join(c.repoDir, "projects", name+".yaml")
-	data, err := os.ReadFile(path)
+	fi, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("project %q not found", name)
 		}
+		return nil, err
+	}
+	if fi.Size() > maxProjectFileBytes {
+		return nil, fmt.Errorf("project file exceeds maximum size of %d bytes", maxProjectFileBytes)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
 		return nil, err
 	}
 	var p domain.Project
