@@ -85,6 +85,7 @@ func (h *BuildsHandler) streamHTTP(c *gin.Context, project, workflowName string,
 	c.Status(http.StatusOK)
 
 	scanner := bufio.NewScanner(rc)
+	scanner.Buffer(make([]byte, 512*1024), 512*1024) // prevent silent truncation of long Docker build lines
 	for scanner.Scan() {
 		c.Writer.WriteString(scanner.Text() + "\n")
 		c.Writer.Flush()

@@ -81,6 +81,7 @@ func (h *LogsHandler) streamHTTP(c *gin.Context, project, app string, tailLines 
 	c.Status(http.StatusOK)
 
 	scanner := bufio.NewScanner(rc)
+	scanner.Buffer(make([]byte, 512*1024), 512*1024) // match CLI buffer; default 64KB drops long Docker build lines
 	for scanner.Scan() {
 		line := scanner.Text()
 		c.Writer.WriteString(line + "\n")
