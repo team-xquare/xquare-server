@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +14,18 @@ import (
 	"github.com/team-xquare/xquare-server/internal/k8s"
 	"github.com/team-xquare/xquare-server/internal/vault"
 )
+
+var resourceNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$`)
+
+func validateName(name string) error {
+	if !resourceNameRe.MatchString(name) {
+		return fmt.Errorf("invalid name %q: must be lowercase alphanumeric and hyphens (2-63 chars)", name)
+	}
+	if strings.Contains(name, "..") || strings.Contains(name, "/") || strings.Contains(name, "%") {
+		return fmt.Errorf("invalid name %q: path separators not allowed", name)
+	}
+	return nil
+}
 
 type AppHandler struct {
 	gitops *gitops.Client
@@ -75,6 +89,23 @@ func (h *AppHandler) Create(c *gin.Context) {
 	if err := c.ShouldBindJSON(&app); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	if err := validateName(app.Name); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Check domain conflicts
+	var domains []string
+	for _, ep := range app.Endpoints {
+		domains = append(domains, ep.Routes...)
+	}
+	if len(domains) > 0 {
+		if err := h.gitops.CheckDomainConflict(project, app.Name, domains); err != nil {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	if err := h.gitops.AddApplication(project, app); err != nil {

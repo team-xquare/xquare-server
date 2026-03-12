@@ -37,7 +37,7 @@ func main() {
 
 	// Init handlers
 	authH := handler.NewAuthHandler(githubClient, cfg)
-	projectH := handler.NewProjectHandler(gitopsClient)
+	projectH := handler.NewProjectHandler(gitopsClient, vaultClient)
 	appH := handler.NewAppHandler(gitopsClient, k8sClient, vaultClient, githubClient)
 	envH := handler.NewEnvHandler(vaultClient)
 	addonH := handler.NewAddonHandler(gitopsClient, k8sClient)
