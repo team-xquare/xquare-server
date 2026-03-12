@@ -22,8 +22,27 @@ func NewAddonHandler(g *gitops.Client, k *k8s.Client) *AddonHandler {
 
 // GET /projects/:project/addons
 func (h *AddonHandler) List(c *gin.Context) {
+	project := c.Param("project")
 	p, _ := c.Get("project")
-	c.JSON(http.StatusOK, gin.H{"addons": p.(*domain.Project).Addons})
+	addons := p.(*domain.Project).Addons
+
+	type addonItem struct {
+		Name    string `json:"name"`
+		Type    string `json:"type"`
+		Storage string `json:"storage"`
+		Ready   bool   `json:"ready"`
+	}
+
+	items := make([]addonItem, 0, len(addons))
+	for _, a := range addons {
+		items = append(items, addonItem{
+			Name:    a.Name,
+			Type:    a.Type,
+			Storage: a.Storage,
+			Ready:   h.k8s.AddonReady(c.Request.Context(), project, a.Name),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"addons": items})
 }
 
 // POST /projects/:project/addons
@@ -85,6 +104,7 @@ func (h *AddonHandler) Connection(c *gin.Context) {
 	}
 
 	port := domain.AddonPort(addon.Type)
+	ready := h.k8s.AddonReady(c.Request.Context(), project, addonName)
 
 	c.JSON(http.StatusOK, gin.H{
 		"name":     addon.Name,
@@ -92,5 +112,6 @@ func (h *AddonHandler) Connection(c *gin.Context) {
 		"host":     "xquare-remote-access-" + project + ".dsmhs.kr",
 		"port":     port,
 		"password": password,
+		"ready":    ready,
 	})
 }

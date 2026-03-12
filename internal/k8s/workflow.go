@@ -23,6 +23,19 @@ var workflowGVR = schema.GroupVersionResource{
 	Resource: "workflows",
 }
 
+var workflowTemplateGVR = schema.GroupVersionResource{
+	Group:    "argoproj.io",
+	Version:  "v1alpha1",
+	Resource: "workflowtemplates",
+}
+
+// ErrCINotReady is returned when the CI pipeline template is not yet deployed.
+type ErrCINotReady struct{ App string }
+
+func (e *ErrCINotReady) Error() string {
+	return fmt.Sprintf("CI pipeline for %q is not ready yet — ArgoCD is still deploying the build infrastructure. Try again in a moment.", e.App)
+}
+
 // WorkflowClient wraps dynamic client for Argo Workflows
 type WorkflowClient struct {
 	dyn dynamic.Interface
@@ -47,6 +60,14 @@ func NewWorkflowClient(cfg *config.K8sConfig, k8sClient *Client) (*WorkflowClien
 		return nil, fmt.Errorf("dynamic client: %w", err)
 	}
 	return &WorkflowClient{dyn: dyn, cs: k8sClient}, nil
+}
+
+// WorkflowTemplateExists checks if the CI pipeline template for an app has been deployed by ArgoCD.
+func (wc *WorkflowClient) WorkflowTemplateExists(ctx context.Context, project, app string) bool {
+	ns := domain.Namespace(project)
+	templateName := app + "-ci-pipeline-template"
+	_, err := wc.dyn.Resource(workflowTemplateGVR).Namespace(ns).Get(ctx, templateName, metav1.GetOptions{})
+	return err == nil
 }
 
 // TriggerCI creates a new Argo Workflow to build and deploy the app.
@@ -90,6 +111,11 @@ func (wc *WorkflowClient) TriggerCI(ctx context.Context, project, app, sha strin
 				"serviceAccountName": "ci-workflow-sa",
 			},
 		},
+	}
+
+	// Pre-check: ensure the WorkflowTemplate was deployed by ArgoCD
+	if !wc.WorkflowTemplateExists(ctx, project, app) {
+		return "", &ErrCINotReady{App: app}
 	}
 
 	result, err := wc.dyn.Resource(workflowGVR).Namespace(ns).Create(ctx, workflow, metav1.CreateOptions{})

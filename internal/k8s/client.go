@@ -156,7 +156,7 @@ func (c *Client) StreamPodLogs(ctx context.Context, project, app string, tailLin
 		target = &pods.Items[len(pods.Items)-1]
 	}
 	if target == nil {
-		return nil, fmt.Errorf("no pods found for app %s", app)
+		return nil, &ErrAppNotDeployed{App: app}
 	}
 
 	req := c.cs.CoreV1().Pods(ns).GetLogs(target.Name, &corev1.PodLogOptions{
@@ -184,6 +184,23 @@ func (c *Client) GetAccessServerPassword(ctx context.Context, project string) (s
 		return "", fmt.Errorf("get access-server-password: %w", err)
 	}
 	return string(data["password"]), nil
+}
+
+// AddonReady returns true if the addon's StatefulSet exists and has at least one ready replica.
+func (c *Client) AddonReady(ctx context.Context, project, addonName string) bool {
+	ns := domain.Namespace(project)
+	sts, err := c.cs.AppsV1().StatefulSets(ns).Get(ctx, addonName, metav1.GetOptions{})
+	if err != nil {
+		return false
+	}
+	return sts.Status.ReadyReplicas > 0
+}
+
+// ErrAppNotDeployed is returned when streaming logs for an app that has no pods.
+type ErrAppNotDeployed struct{ App string }
+
+func (e *ErrAppNotDeployed) Error() string {
+	return fmt.Sprintf("app %q has not been deployed yet — run: xquare deploy %s", e.App, e.App)
 }
 
 // NamespaceExists checks if a project namespace exists

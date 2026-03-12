@@ -28,12 +28,27 @@ func validateName(name string) error {
 	return nil
 }
 
+// friendlyK8sError translates internal K8s/Argo error messages into user-facing ones.
+func friendlyK8sError(err error) string {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "workflowtemplates") && strings.Contains(msg, "not found"):
+		return "CI pipeline not ready yet — ArgoCD is deploying the build infrastructure. Try again in a moment."
+	case strings.Contains(msg, "workflows.argoproj.io") && strings.Contains(msg, "forbidden"):
+		return "Build trigger is not authorized. Please contact an administrator."
+	case strings.Contains(msg, "connection refused") || strings.Contains(msg, "no route to host"):
+		return "Cannot connect to the cluster. Please try again."
+	default:
+		return msg
+	}
+}
+
 type AppHandler struct {
-	gitops  *gitops.Client
-	k8s     *k8s.Client
-	vault   *vault.Client
-	wf      *k8s.WorkflowClient
-	github  *github.Client
+	gitops *gitops.Client
+	k8s    *k8s.Client
+	vault  *vault.Client
+	wf     *k8s.WorkflowClient
+	github *github.Client
 }
 
 func NewAppHandler(g *gitops.Client, k *k8s.Client, v *vault.Client, wf *k8s.WorkflowClient, gh *github.Client) *AppHandler {
@@ -60,16 +75,54 @@ func (h *AppHandler) Get(c *gin.Context) {
 }
 
 // GET /projects/:project/apps/:app/status
+// Returns deployment status enriched with CI readiness and latest build info.
 func (h *AppHandler) Status(c *gin.Context) {
 	project := c.Param("project")
 	app := c.Param("app")
 
 	status, err := h.k8s.GetAppStatus(c.Request.Context(), project, app)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": friendlyK8sError(err)})
 		return
 	}
-	c.JSON(http.StatusOK, status)
+
+	// Enrich: CI pipeline readiness
+	ciReady := false
+	if h.wf != nil {
+		ciReady = h.wf.WorkflowTemplateExists(c.Request.Context(), project, app)
+	}
+
+	// Enrich: latest build status so clients can show deployPhase
+	var lastBuild *k8s.WorkflowInfo
+	if h.wf != nil {
+		if wfs, err := h.wf.ListWorkflows(c.Request.Context(), project, app); err == nil && len(wfs) > 0 {
+			lastBuild = &wfs[0]
+		}
+	}
+
+	// Compute deployPhase for UI clarity
+	deployPhase := "not_deployed"
+	if status.Status == "running" || status.Status == "failed" || status.Status == "pending" || status.Status == "stopped" {
+		deployPhase = "deployed"
+	} else if lastBuild != nil {
+		switch lastBuild.Status {
+		case "running", "pending":
+			deployPhase = "building"
+		case "success":
+			deployPhase = "syncing" // build done, waiting for ArgoCD
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"name":        status.Name,
+		"status":      status.Status,
+		"deployPhase": deployPhase,
+		"ciReady":     ciReady,
+		"scale":       status.Scale,
+		"version":     status.Version,
+		"instances":   status.Instances,
+		"lastBuild":   lastBuild,
+	})
 }
 
 // POST /projects/:project/apps
@@ -129,16 +182,31 @@ func (h *AppHandler) Create(c *gin.Context) {
 }
 
 // PUT /projects/:project/apps/:app
+// Preserves server-managed fields (installationId, hash) that are not in the request body.
 func (h *AppHandler) Update(c *gin.Context) {
 	project := c.Param("project")
-	app := c.Param("app")
+	appName := c.Param("app")
 
 	var updated domain.Application
 	if err := c.ShouldBindJSON(&updated); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	updated.Name = app // enforce from path
+	updated.Name = appName // enforce from path
+
+	// Preserve server-managed fields from existing app
+	p, _ := c.Get("project")
+	for _, existing := range p.(*domain.Project).Applications {
+		if existing.Name == appName {
+			if updated.GitHub.InstallationID == "" {
+				updated.GitHub.InstallationID = existing.GitHub.InstallationID
+			}
+			if updated.GitHub.Hash == "" {
+				updated.GitHub.Hash = existing.GitHub.Hash
+			}
+			break
+		}
+	}
 
 	if err := h.gitops.UpdateApplication(project, updated); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -187,7 +255,16 @@ func (h *AppHandler) Redeploy(c *gin.Context) {
 
 	name, err := h.wf.TriggerCI(c.Request.Context(), project, app, sha)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		var ciNotReady *k8s.ErrCINotReady
+		if errors.As(err, &ciNotReady) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"error":   ciNotReady.Error(),
+				"code":    "ci_not_ready",
+				"retryIn": 30,
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": friendlyK8sError(err)})
 		return
 	}
 

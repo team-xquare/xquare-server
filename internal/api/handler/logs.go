@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bufio"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -50,6 +51,11 @@ func (h *LogsHandler) Stream(c *gin.Context) {
 func (h *LogsHandler) streamHTTP(c *gin.Context, project, app string, tailLines int64, follow bool) {
 	rc, err := h.k8s.StreamPodLogs(c.Request.Context(), project, app, tailLines, follow)
 	if err != nil {
+		var notDeployed *k8s.ErrAppNotDeployed
+		if errors.As(err, &notDeployed) {
+			c.JSON(http.StatusNotFound, gin.H{"error": notDeployed.Error(), "code": "not_deployed"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -83,7 +89,12 @@ func (h *LogsHandler) streamWS(c *gin.Context, project, app string, tailLines in
 	ctx := c.Request.Context()
 	rc, err := h.k8s.StreamPodLogs(ctx, project, app, tailLines, follow)
 	if err != nil {
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"`+err.Error()+`"}`))
+		var notDeployed *k8s.ErrAppNotDeployed
+		if errors.As(err, &notDeployed) {
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"`+notDeployed.Error()+`","code":"not_deployed"}`))
+		} else {
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"`+err.Error()+`"}`))
+		}
 		return
 	}
 	defer rc.Close()
