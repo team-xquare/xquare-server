@@ -195,6 +195,11 @@ func (h *AppHandler) Create(c *gin.Context) {
 		return
 	}
 
+	if err := domain.ValidTriggerPaths(app.GitHub.TriggerPaths); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	// Auto-resolve GitHub App installation ID
 	installID, err := h.github.GetRepoInstallationID(c.Request.Context(), app.GitHub.Owner, app.GitHub.Repo)
 	if err != nil {
@@ -266,6 +271,11 @@ func (h *AppHandler) Update(c *gin.Context) {
 		return
 	}
 
+	if err := domain.ValidTriggerPaths(updated.GitHub.TriggerPaths); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	// Validate endpoints: block reserved infrastructure domains
 	if err := validateEndpoints(updated.Endpoints); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -284,19 +294,31 @@ func (h *AppHandler) Update(c *gin.Context) {
 		}
 	}
 
-	// Preserve server-managed fields from existing app
+	// Always re-resolve installationId from GitHub (user-supplied value is ignored).
+	// This ensures owner/repo changes don't inherit stale credentials.
+	installID, err := h.github.GetRepoInstallationID(c.Request.Context(), updated.GitHub.Owner, updated.GitHub.Repo)
+	if err != nil {
+		var notInstalled *github.ErrAppNotInstalled
+		if errors.As(err, &notInstalled) {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"error":       fmt.Sprintf("GitHub App not installed on %s/%s", updated.GitHub.Owner, updated.GitHub.Repo),
+				"install_url": notInstalled.InstallURL,
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	updated.GitHub.InstallationID = installID
+
+	// Preserve hash (server-managed, set by CI)
 	proj, ok := projectFromCtx(c)
 	if !ok {
 		return
 	}
 	for _, existing := range proj.Applications {
 		if existing.Name == appName {
-			if updated.GitHub.InstallationID == "" {
-				updated.GitHub.InstallationID = existing.GitHub.InstallationID
-			}
-			if updated.GitHub.Hash == "" {
-				updated.GitHub.Hash = existing.GitHub.Hash
-			}
+			updated.GitHub.Hash = existing.GitHub.Hash
 			break
 		}
 	}

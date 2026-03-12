@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/team-xquare/xquare-server/internal/domain"
 	"github.com/team-xquare/xquare-server/internal/vault"
 )
 
@@ -41,6 +42,13 @@ func (h *EnvHandler) Set(c *gin.Context) {
 		return
 	}
 
+	for k := range envs {
+		if err := domain.ValidEnvKey(k); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
 	if err := h.vault.SetEnv(project, app, envs); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -58,6 +66,13 @@ func (h *EnvHandler) Patch(c *gin.Context) {
 	if err := c.ShouldBindJSON(&patch); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	for k := range patch {
+		if err := domain.ValidEnvKey(k); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	if err := h.vault.PatchEnv(project, app, patch); err != nil {
