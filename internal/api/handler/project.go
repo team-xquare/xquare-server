@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"fmt"
+	"hash/adler32"
 	"net/http"
 	"regexp"
 	"strings"
@@ -13,7 +15,12 @@ import (
 	"github.com/team-xquare/xquare-server/internal/vault"
 )
 
-var projectNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$`)
+// Project names: lowercase letters and numbers only, no hyphens (2-63 chars)
+var projectNameRe = regexp.MustCompile(`^[a-z0-9]{2,63}$`)
+
+func namespaceChecksum(project string) uint32 {
+	return adler32.Checksum([]byte(domain.Namespace(project)))
+}
 
 type ProjectHandler struct {
 	gitops   *gitops.Client
@@ -79,8 +86,22 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 	}
 
 	if !projectNameRe.MatchString(req.Name) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project name: must be lowercase alphanumeric and hyphens (2-63 chars)"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project name: must be lowercase letters and numbers only, no hyphens (2-63 chars)"})
 		return
+	}
+
+	// Check adler32sum(namespace) uniqueness — used as VictoriaMetrics tenant-id
+	existing, err := h.gitops.ListProjects()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	newChecksum := namespaceChecksum(req.Name)
+	for _, p := range existing {
+		if namespaceChecksum(p) == newChecksum {
+			c.JSON(http.StatusConflict, gin.H{"error": fmt.Sprintf("project name %q conflicts with existing project %q (tenant-id collision)", req.Name, p)})
+			return
+		}
 	}
 
 	owner := domain.Owner{

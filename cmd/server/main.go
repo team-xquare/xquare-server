@@ -106,6 +106,7 @@ func main() {
 				apps.GET("/:app/logs", logsH.Stream)
 				apps.GET("/:app/builds", buildsH.List)
 				apps.GET("/:app/builds/:workflow/logs", buildsH.StreamLogs)
+				apps.GET("/:app/tunnel", appH.Tunnel)
 			}
 
 			// Env

@@ -231,6 +231,42 @@ func (h *AppHandler) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// GET /projects/:project/apps/:app/tunnel
+// Returns tunnel connection info (access server host/password, app endpoint ports)
+func (h *AppHandler) Tunnel(c *gin.Context) {
+	project := c.Param("project")
+	appName := c.Param("app")
+
+	password, err := h.k8s.GetAccessServerPassword(c.Request.Context(), project)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get access credentials"})
+		return
+	}
+
+	p, _ := c.Get("project")
+	var ports []int
+	found := false
+	for _, a := range p.(*domain.Project).Applications {
+		if a.Name == appName {
+			found = true
+			for _, ep := range a.Endpoints {
+				ports = append(ports, ep.Port)
+			}
+			break
+		}
+	}
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "app not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"host":     "xquare-remote-access-" + project + ".dsmhs.kr",
+		"password": password,
+		"ports":    ports,
+	})
+}
+
 // POST /projects/:project/apps/:app/redeploy
 // Triggers CI by creating a new Argo Workflow for the app.
 func (h *AppHandler) Redeploy(c *gin.Context) {

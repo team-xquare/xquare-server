@@ -1,7 +1,10 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -10,6 +13,26 @@ import (
 	"github.com/team-xquare/xquare-server/internal/gitops"
 	"github.com/team-xquare/xquare-server/internal/k8s"
 )
+
+const maxStorageBytes = 4 * 1024 * 1024 * 1024 // 4Gi
+
+var storageRe = regexp.MustCompile(`^(\d+)(Ki|Mi|Gi|Ti|Pi|E|P|T|G|M|K)$`)
+
+func parseStorageBytes(s string) (int64, error) {
+	m := storageRe.FindStringSubmatch(s)
+	if m == nil {
+		return 0, fmt.Errorf("invalid storage %q: must be a number followed by a unit (e.g. 1Gi, 500Mi)", s)
+	}
+	n, _ := strconv.ParseInt(m[1], 10, 64)
+	units := map[string]int64{
+		"Ki": 1024, "Mi": 1024 * 1024, "Gi": 1024 * 1024 * 1024,
+		"Ti": 1024 * 1024 * 1024 * 1024, "Pi": 1024 * 1024 * 1024 * 1024 * 1024,
+		"K": 1000, "M": 1000 * 1000, "G": 1000 * 1000 * 1000,
+		"T": 1000 * 1000 * 1000 * 1000, "P": 1000 * 1000 * 1000 * 1000 * 1000,
+		"E": 1000 * 1000 * 1000 * 1000 * 1000 * 1000,
+	}
+	return n * units[m[2]], nil
+}
 
 type AddonHandler struct {
 	gitops *gitops.Client
@@ -52,6 +75,16 @@ func (h *AddonHandler) Create(c *gin.Context) {
 	var addon domain.Addon
 	if err := c.ShouldBindJSON(&addon); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	storageBytes, err := parseStorageBytes(addon.Storage)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if storageBytes >= maxStorageBytes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "storage must be less than 4Gi"})
 		return
 	}
 
