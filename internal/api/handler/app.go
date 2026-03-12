@@ -10,7 +10,6 @@ import (
 
 	"github.com/team-xquare/xquare-server/internal/domain"
 	"github.com/team-xquare/xquare-server/internal/gitops"
-	"github.com/team-xquare/xquare-server/internal/github"
 	"github.com/team-xquare/xquare-server/internal/k8s"
 	"github.com/team-xquare/xquare-server/internal/vault"
 )
@@ -31,11 +30,11 @@ type AppHandler struct {
 	gitops *gitops.Client
 	k8s    *k8s.Client
 	vault  *vault.Client
-	gh     *github.Client
+	wf     *k8s.WorkflowClient
 }
 
-func NewAppHandler(g *gitops.Client, k *k8s.Client, v *vault.Client, gh *github.Client) *AppHandler {
-	return &AppHandler{gitops: g, k8s: k, vault: v, gh: gh}
+func NewAppHandler(g *gitops.Client, k *k8s.Client, v *vault.Client, wf *k8s.WorkflowClient) *AppHandler {
+	return &AppHandler{gitops: g, k8s: k, vault: v, wf: wf}
 }
 
 // GET /projects/:project/apps
@@ -159,53 +158,21 @@ func (h *AppHandler) Delete(c *gin.Context) {
 }
 
 // POST /projects/:project/apps/:app/redeploy
-// Triggers a re-deploy by fetching latest commit SHA and writing it to gitops
+// Triggers CI by creating a new Argo Workflow for the app.
 func (h *AppHandler) Redeploy(c *gin.Context) {
 	project := c.Param("project")
 	app := c.Param("app")
 
-	// GitHub access token passed in X-GitHub-Token header
-	token := c.GetHeader("X-GitHub-Token")
+	if h.wf == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "CI trigger unavailable"})
+		return
+	}
 
-	p, err := h.gitops.GetProject(project)
+	name, err := h.wf.TriggerCI(c.Request.Context(), project, app)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		return
-	}
-
-	var target *domain.Application
-	for i := range p.Applications {
-		if p.Applications[i].Name == app {
-			target = &p.Applications[i]
-			break
-		}
-	}
-	if target == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "app not found"})
-		return
-	}
-
-	// If no user token provided, use GitHub App installation token
-	if token == "" {
-		installToken, err := h.gh.GetInstallationToken(c.Request.Context(), target.GitHub.InstallationID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "get installation token: " + err.Error()})
-			return
-		}
-		token = installToken
-	}
-
-	sha, err := h.gh.GetLatestCommitSHA(c.Request.Context(), token,
-		target.GitHub.Owner, target.GitHub.Repo, target.GitHub.Branch)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "get latest commit: " + err.Error()})
-		return
-	}
-
-	if err := h.gitops.UpdateApplicationHash(project, app, sha); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"sha": sha})
+	c.JSON(http.StatusOK, gin.H{"build": name})
 }

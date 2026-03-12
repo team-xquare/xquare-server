@@ -9,6 +9,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -54,6 +55,50 @@ func NewWorkflowClient(cfg *config.K8sConfig, k8sClient *Client) (*WorkflowClien
 		return nil, fmt.Errorf("dynamic client: %w", err)
 	}
 	return &WorkflowClient{dyn: dyn, cs: k8sClient}, nil
+}
+
+// TriggerCI creates a new Argo Workflow to build and deploy the app.
+// The workflow references the existing WorkflowTemplate ({app}-ci-pipeline-template).
+func (wc *WorkflowClient) TriggerCI(ctx context.Context, project, app string) (string, error) {
+	ns := domain.Namespace(project)
+	templateName := app + "-ci-pipeline-template"
+
+	workflow := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "argoproj.io/v1alpha1",
+			"kind":       "Workflow",
+			"metadata": map[string]any{
+				"generateName": app + "-ci-",
+				"namespace":    ns,
+				"labels": map[string]any{
+					"app.kubernetes.io/name":      app,
+					"app.kubernetes.io/component": "ci-workflow",
+				},
+			},
+			"spec": map[string]any{
+				"workflowTemplateRef": map[string]any{
+					"name": templateName,
+				},
+				"arguments": map[string]any{
+					"parameters": []any{
+						map[string]any{"name": "github-event-type", "value": "manual"},
+						map[string]any{"name": "github-sha", "value": ""},
+					},
+				},
+				"podGC": map[string]any{
+					"strategy":            "OnPodCompletion",
+					"deleteDelayDuration": "72h",
+				},
+				"serviceAccountName": "ci-workflow-sa",
+			},
+		},
+	}
+
+	result, err := wc.dyn.Resource(workflowGVR).Namespace(ns).Create(ctx, workflow, metav1.CreateOptions{})
+	if err != nil {
+		return "", fmt.Errorf("create workflow: %w", err)
+	}
+	return result.GetName(), nil
 }
 
 // ListWorkflows returns CI workflows for an app, sorted by start time (newest first)
