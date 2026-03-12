@@ -525,9 +525,9 @@ func validateBuildSpec(b domain.Build) error {
 	return nil
 }
 
-// POST /projects/:project/apps/:app/redeploy
+// POST /projects/:project/apps/:app/trigger
 // Triggers CI by creating a new Argo Workflow for the app.
-func (h *AppHandler) Redeploy(c *gin.Context) {
+func (h *AppHandler) Trigger(c *gin.Context) {
 	project := c.Param("project")
 	app := c.Param("app")
 
