@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -21,9 +22,9 @@ type ServerConfig struct {
 
 type JWTConfig struct {
 	Secret     string
-	AccessExp  int      // hours
-	RefreshExp int      // days
-	AdminUsers []string // GitHub usernames with full access (comma-separated ADMIN_GITHUB_USERS)
+	AccessExp  int     // hours
+	RefreshExp int     // days
+	AdminIDs   []int64 // GitHub user IDs with full access (comma-separated ADMIN_GITHUB_IDS)
 }
 
 type GitHubConfig struct {
@@ -59,7 +60,7 @@ func Load() (*Config, error) {
 			Secret:     requireEnv("JWT_SECRET"),
 			AccessExp:  24,
 			RefreshExp: 30,
-			AdminUsers: parseList(os.Getenv("ADMIN_GITHUB_USERS")),
+			AdminIDs:   parseIDList(os.Getenv("ADMIN_GITHUB_IDS")),
 		},
 		GitHub: GitHubConfig{
 			ClientID:     requireEnv("GITHUB_CLIENT_ID"),
@@ -92,13 +93,20 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-func parseList(s string) []string {
-	var out []string
+// parseIDList parses a comma-separated list of GitHub user IDs (int64).
+func parseIDList(s string) []int64 {
+	var out []int64
 	for _, v := range strings.Split(s, ",") {
 		v = strings.TrimSpace(v)
-		if v != "" {
-			out = append(out, v)
+		if v == "" {
+			continue
 		}
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warn: invalid admin github ID %q: %v\n", v, err)
+			continue
+		}
+		out = append(out, id)
 	}
 	return out
 }

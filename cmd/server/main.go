@@ -42,7 +42,7 @@ func main() {
 
 	// Init handlers
 	authH := handler.NewAuthHandler(githubClient, cfg)
-	projectH := handler.NewProjectHandler(gitopsClient, vaultClient, githubClient, cfg.JWT.AdminUsers)
+	projectH := handler.NewProjectHandler(gitopsClient, vaultClient, githubClient, cfg.JWT.AdminIDs)
 	appH := handler.NewAppHandler(gitopsClient, k8sClient, vaultClient, wfClient)
 	envH := handler.NewEnvHandler(vaultClient)
 	addonH := handler.NewAddonHandler(gitopsClient, k8sClient)
@@ -83,7 +83,7 @@ func main() {
 		api.POST("/projects", projectH.Create)
 
 		// All project-specific routes require project ownership
-		proj := api.Group("/projects/:project", middleware.ProjectAccess(gitopsClient, cfg.JWT.AdminUsers))
+		proj := api.Group("/projects/:project", middleware.ProjectAccess(gitopsClient, cfg.JWT.AdminIDs))
 		{
 			proj.GET("", projectH.Get)
 			proj.DELETE("", projectH.Delete)

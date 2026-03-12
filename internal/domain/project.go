@@ -15,11 +15,7 @@ type Project struct {
 }
 
 // HasAccess returns true if the given GitHub ID is an owner of this project.
-// Projects with no owners defined are treated as legacy projects — accessible to all authenticated users.
 func (p *Project) HasAccess(githubID int64) bool {
-	if len(p.Owners) == 0 {
-		return true
-	}
 	for _, o := range p.Owners {
 		if o.ID == githubID {
 			return true

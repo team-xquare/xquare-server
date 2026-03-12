@@ -16,36 +16,33 @@ import (
 var projectNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$`)
 
 type ProjectHandler struct {
-	gitops     *gitops.Client
-	vault      *vault.Client
-	github     *github.Client
-	adminUsers map[string]bool
+	gitops   *gitops.Client
+	vault    *vault.Client
+	github   *github.Client
+	adminIDs map[int64]bool
 }
 
-func NewProjectHandler(g *gitops.Client, v *vault.Client, gh *github.Client, admins []string) *ProjectHandler {
-	m := make(map[string]bool, len(admins))
-	for _, u := range admins {
-		if u != "" {
-			m[u] = true
-		}
+func NewProjectHandler(g *gitops.Client, v *vault.Client, gh *github.Client, adminIDs []int64) *ProjectHandler {
+	m := make(map[int64]bool, len(adminIDs))
+	for _, id := range adminIDs {
+		m[id] = true
 	}
-	return &ProjectHandler{gitops: g, vault: v, github: gh, adminUsers: m}
+	return &ProjectHandler{gitops: g, vault: v, github: gh, adminIDs: m}
 }
 
-func (h *ProjectHandler) isAdmin(username string) bool {
-	return h.adminUsers[username]
+func (h *ProjectHandler) isAdmin(githubID int64) bool {
+	return h.adminIDs[githubID]
 }
 
 // GET /projects — only shows projects the user owns (admins see all)
 func (h *ProjectHandler) List(c *gin.Context) {
 	githubID := c.GetInt64("githubId")
-	username := c.GetString("username")
 	all, err := h.gitops.ListProjects()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	if h.isAdmin(username) {
+	if h.isAdmin(githubID) {
 		c.JSON(http.StatusOK, gin.H{"projects": all})
 		return
 	}
@@ -103,7 +100,6 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 }
 
 // DELETE /projects/:project
-// Also cleans up Vault secrets for all apps in the project
 func (h *ProjectHandler) Delete(c *gin.Context) {
 	project := c.Param("project")
 
@@ -115,7 +111,6 @@ func (h *ProjectHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	// Clean up Vault secrets for all apps
 	for _, app := range proj.Applications {
 		_ = h.vault.DeleteEnv(project, app.Name)
 	}

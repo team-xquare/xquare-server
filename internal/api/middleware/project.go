@@ -9,20 +9,17 @@ import (
 )
 
 // ProjectAccess checks that the authenticated user owns the requested project.
-// Admins (listed in adminUsers by GitHub username) bypass the check.
+// Admins (listed in adminIDs by GitHub user ID) bypass the ownership check.
 // On success, the loaded project is stored in context as "project".
-func ProjectAccess(g *gitops.Client, adminUsers []string) gin.HandlerFunc {
-	admins := make(map[string]bool, len(adminUsers))
-	for _, u := range adminUsers {
-		if u != "" {
-			admins[u] = true
-		}
+func ProjectAccess(g *gitops.Client, adminIDs []int64) gin.HandlerFunc {
+	admins := make(map[int64]bool, len(adminIDs))
+	for _, id := range adminIDs {
+		admins[id] = true
 	}
 
 	return func(c *gin.Context) {
 		projectName := c.Param("project")
 		githubID := c.GetInt64("githubId")
-		username := c.GetString("username")
 
 		p, err := g.GetProject(projectName)
 		if err != nil {
@@ -30,7 +27,7 @@ func ProjectAccess(g *gitops.Client, adminUsers []string) gin.HandlerFunc {
 			return
 		}
 
-		if !admins[username] && !p.HasAccess(githubID) {
+		if !admins[githubID] && !p.HasAccess(githubID) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "access denied"})
 			return
 		}
