@@ -101,10 +101,10 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// Auth (public) — callback is rate-limited to 20 req/min per IP
+	// Auth (public) — callback rate-limited by IP (no account available yet)
 	auth := r.Group("/auth")
 	{
-		auth.POST("/github/callback", middleware.RateLimit(20, time.Minute), authH.GitHubCallback)
+		auth.POST("/github/callback", middleware.RateLimitByIP(20, time.Minute), authH.GitHubCallback)
 		auth.GET("/me", middleware.Auth(cfg.JWT.Secret), authH.Me)
 	}
 
@@ -147,7 +147,8 @@ func main() {
 					app.PUT("", appH.Update)
 					app.DELETE("", appH.Delete)
 					app.GET("/status", appH.Status)
-					app.POST("/redeploy", appH.Redeploy)
+					// Redeploy rate-limited per account (max 10 triggers/min)
+				app.POST("/redeploy", middleware.RateLimitByAccount(10, time.Minute), appH.Redeploy)
 					app.GET("/logs", logsH.Stream)
 					app.GET("/builds", buildsH.List)
 					app.GET("/builds/:workflow/logs", buildsH.StreamLogs)
