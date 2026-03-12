@@ -126,8 +126,10 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 func (h *ProjectHandler) Delete(c *gin.Context) {
 	project := c.Param("project")
 
-	p, _ := c.Get("project")
-	proj := p.(*domain.Project)
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
 
 	if err := h.gitops.DeleteProject(project, c.GetString("username")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -148,8 +150,10 @@ func (h *ProjectHandler) Delete(c *gin.Context) {
 
 // GET /projects/:project/members
 func (h *ProjectHandler) ListMembers(c *gin.Context) {
-	p, _ := c.Get("project")
-	proj := p.(*domain.Project)
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"owners": proj.Owners})
 }
 
@@ -186,8 +190,11 @@ func (h *ProjectHandler) RemoveMember(c *gin.Context) {
 	targetUsername := c.Param("username")
 
 	// Prevent removing the last owner — project would become permanently inaccessible
-	p, _ := c.Get("project")
-	if len(p.(*domain.Project).Owners) <= 1 {
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
+	if len(proj.Owners) <= 1 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot remove the last owner of a project"})
 		return
 	}
