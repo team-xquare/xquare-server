@@ -110,11 +110,8 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 		}
 	}
 
-	owner := domain.Owner{
-		ID:       c.GetInt64("githubId"),
-		Username: c.GetString("username"),
-	}
-	if err := h.gitops.CreateProject(req.Name, owner, owner.Username); err != nil {
+	owner := domain.Owner{ID: c.GetInt64("githubId")}
+	if err := h.gitops.CreateProject(req.Name, owner, c.GetString("username")); err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
@@ -129,11 +126,6 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 // DELETE /projects/:project
 func (h *ProjectHandler) Delete(c *gin.Context) {
 	project := c.Param("project")
-
-	if !c.GetBool("isProjectAdmin") {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only the project creator or an admin can delete a project"})
-		return
-	}
 
 	proj, ok := projectFromCtx(c)
 	if !ok {
@@ -172,10 +164,6 @@ func (h *ProjectHandler) ListMembers(c *gin.Context) {
 
 // POST /projects/:project/members  {"username": "github-login"}
 func (h *ProjectHandler) AddMember(c *gin.Context) {
-	if !c.GetBool("isProjectAdmin") {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only the project creator or an admin can manage members"})
-		return
-	}
 	project := c.Param("project")
 
 	var req struct {
@@ -193,7 +181,7 @@ func (h *ProjectHandler) AddMember(c *gin.Context) {
 		return
 	}
 
-	owner := domain.Owner{ID: user.ID, Username: user.Login}
+	owner := domain.Owner{ID: user.ID}
 	if err := h.gitops.AddProjectMember(project, owner, c.GetString("username")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -203,10 +191,6 @@ func (h *ProjectHandler) AddMember(c *gin.Context) {
 
 // DELETE /projects/:project/members/:username
 func (h *ProjectHandler) RemoveMember(c *gin.Context) {
-	if !c.GetBool("isProjectAdmin") {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only the project creator or an admin can manage members"})
-		return
-	}
 	project := c.Param("project")
 	targetUsername := c.Param("username")
 
@@ -227,7 +211,7 @@ func (h *ProjectHandler) RemoveMember(c *gin.Context) {
 		return
 	}
 
-	if err := h.gitops.RemoveProjectMember(project, user.ID, targetUsername, c.GetString("username")); err != nil {
+	if err := h.gitops.RemoveProjectMember(project, user.ID, c.GetString("username")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
