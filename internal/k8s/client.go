@@ -194,7 +194,7 @@ func (c *Client) StreamPodLogs(ctx context.Context, project, app string, tailLin
 
 		if !ready {
 			if time.Now().After(deadline) {
-				return nil, fmt.Errorf("timed out waiting for app %q to start", app)
+				return nil, &ErrPodStartTimeout{App: app}
 			}
 			select {
 			case <-ctx.Done():
@@ -279,6 +279,13 @@ type ErrAppNotDeployed struct{ App string }
 
 func (e *ErrAppNotDeployed) Error() string {
 	return fmt.Sprintf("app %q has not been deployed yet — run: xquare deploy %s", e.App, e.App)
+}
+
+// ErrPodStartTimeout is returned when a pod fails to become ready within the wait window.
+type ErrPodStartTimeout struct{ App string }
+
+func (e *ErrPodStartTimeout) Error() string {
+	return fmt.Sprintf("app %q did not start within 3 minutes", e.App)
 }
 
 // DeleteNamespace deletes the K8s namespace for a project (cascades all resources).

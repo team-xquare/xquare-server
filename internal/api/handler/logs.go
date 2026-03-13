@@ -71,6 +71,11 @@ func (h *LogsHandler) streamHTTP(c *gin.Context, project, app string, tailLines 
 			c.JSON(http.StatusNotFound, gin.H{"error": notDeployed.Error(), "code": "not_deployed"})
 			return
 		}
+		var timeout *k8s.ErrPodStartTimeout
+		if errors.As(err, &timeout) {
+			c.JSON(http.StatusGatewayTimeout, gin.H{"error": timeout.Error(), "code": "start_timeout"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -106,11 +111,20 @@ func (h *LogsHandler) streamWS(c *gin.Context, project, app string, tailLines in
 	rc, err := h.k8s.StreamPodLogs(ctx, project, app, tailLines, follow)
 	if err != nil {
 		var notDeployed *k8s.ErrAppNotDeployed
+		var timeout *k8s.ErrPodStartTimeout
+		var code, errMsg string
 		if errors.As(err, &notDeployed) {
-			msg, _ := json.Marshal(map[string]string{"error": notDeployed.Error(), "code": "not_deployed"})
+			code, errMsg = "not_deployed", notDeployed.Error()
+		} else if errors.As(err, &timeout) {
+			code, errMsg = "start_timeout", timeout.Error()
+		} else {
+			errMsg = err.Error()
+		}
+		if code != "" {
+			msg, _ := json.Marshal(map[string]string{"error": errMsg, "code": code})
 			_ = conn.WriteMessage(websocket.TextMessage, msg)
 		} else {
-			msg, _ := json.Marshal(map[string]string{"error": err.Error()})
+			msg, _ := json.Marshal(map[string]string{"error": errMsg})
 			_ = conn.WriteMessage(websocket.TextMessage, msg)
 		}
 		return
