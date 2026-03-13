@@ -39,7 +39,11 @@ func (h *AllowlistHandler) List(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"users": users})
+	ids := make([]int64, len(users))
+	for i, u := range users {
+		ids[i] = u.ID
+	}
+	c.JSON(http.StatusOK, gin.H{"users": resolveUsernames(c, h.github, ids)})
 }
 
 // POST /admin/allowlist
@@ -62,8 +66,7 @@ func (h *AllowlistHandler) Add(c *gin.Context) {
 		return
 	}
 	if err := h.gitops.AddAllowedUser(c.GetString("username"), gitops.AllowedUser{
-		ID:       ghUser.ID,
-		Username: ghUser.Login,
+		ID: ghUser.ID,
 	}); err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
