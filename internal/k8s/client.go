@@ -169,12 +169,49 @@ func (c *Client) StreamPodLogs(ctx context.Context, project, app string, tailLin
 		return nil, &ErrAppNotDeployed{App: app}
 	}
 
+	// Pod exists but container hasn't started yet — return a retriable error
+	// instead of letting the Kubernetes API return an opaque 500.
+	if target.Status.Phase != corev1.PodRunning && target.Status.Phase != corev1.PodSucceeded {
+		return nil, &ErrPodNotReady{App: app, Phase: string(target.Status.Phase)}
+	}
+	for _, cs := range target.Status.ContainerStatuses {
+		if cs.Name == app && cs.State.Waiting != nil {
+			return nil, &ErrPodNotReady{App: app, Phase: cs.State.Waiting.Reason}
+		}
+	}
+
+	// Resolve the container name: prefer app name, fall back to first container.
+	containerName := app
+	if len(target.Spec.Containers) > 0 {
+		found := false
+		for _, cont := range target.Spec.Containers {
+			if cont.Name == app {
+				found = true
+				break
+			}
+		}
+		if !found {
+			containerName = target.Spec.Containers[0].Name
+		}
+	}
+
 	req := c.cs.CoreV1().Pods(ns).GetLogs(target.Name, &corev1.PodLogOptions{
-		Container: app,
+		Container: containerName,
 		TailLines: &tailLines,
 		Follow:    follow,
 	})
-	return req.Stream(ctx)
+	rc, err := req.Stream(ctx)
+	if err != nil {
+		// Kubernetes returns opaque errors when the container is still initialising.
+		// Surface a user-friendly message instead of a raw 500.
+		msg := err.Error()
+		if strings.Contains(msg, "waiting") || strings.Contains(msg, "ContainerCreating") ||
+			strings.Contains(msg, "PodInitializing") || strings.Contains(msg, "not running") {
+			return nil, &ErrPodNotReady{App: app, Phase: "starting"}
+		}
+		return nil, fmt.Errorf("stream logs: %w", err)
+	}
+	return rc, nil
 }
 
 // GetSecret reads a K8s secret
@@ -211,6 +248,19 @@ type ErrAppNotDeployed struct{ App string }
 
 func (e *ErrAppNotDeployed) Error() string {
 	return fmt.Sprintf("app %q has not been deployed yet — run: xquare deploy %s", e.App, e.App)
+}
+
+// ErrPodNotReady is returned when the pod exists but its container hasn't started yet.
+type ErrPodNotReady struct {
+	App   string
+	Phase string
+}
+
+func (e *ErrPodNotReady) Error() string {
+	if e.Phase != "" {
+		return fmt.Sprintf("app %q is starting up (%s) — logs will be available once the container is running", e.App, e.Phase)
+	}
+	return fmt.Sprintf("app %q is starting up — logs will be available once the container is running", e.App)
 }
 
 // DeleteNamespace deletes the K8s namespace for a project (cascades all resources).

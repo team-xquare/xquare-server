@@ -71,7 +71,12 @@ func (h *LogsHandler) streamHTTP(c *gin.Context, project, app string, tailLines 
 			c.JSON(http.StatusNotFound, gin.H{"error": notDeployed.Error(), "code": "not_deployed"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		var notReady *k8s.ErrPodNotReady
+		if errors.As(err, &notReady) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": notReady.Error(), "code": "pod_not_ready"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "로그를 가져올 수 없습니다 — 잠시 후 다시 시도하세요"})
 		return
 	}
 	defer rc.Close()
@@ -106,11 +111,15 @@ func (h *LogsHandler) streamWS(c *gin.Context, project, app string, tailLines in
 	rc, err := h.k8s.StreamPodLogs(ctx, project, app, tailLines, follow)
 	if err != nil {
 		var notDeployed *k8s.ErrAppNotDeployed
+		var notReady *k8s.ErrPodNotReady
 		if errors.As(err, &notDeployed) {
 			msg, _ := json.Marshal(map[string]string{"error": notDeployed.Error(), "code": "not_deployed"})
 			_ = conn.WriteMessage(websocket.TextMessage, msg)
+		} else if errors.As(err, &notReady) {
+			msg, _ := json.Marshal(map[string]string{"error": notReady.Error(), "code": "pod_not_ready"})
+			_ = conn.WriteMessage(websocket.TextMessage, msg)
 		} else {
-			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"log stream unavailable"}`))
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"로그를 가져올 수 없습니다 — 잠시 후 다시 시도하세요"}`))
 		}
 		return
 	}
