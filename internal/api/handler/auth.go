@@ -13,13 +13,18 @@ import (
 	"github.com/team-xquare/xquare-server/internal/github"
 )
 
-type AuthHandler struct {
-	gh  *github.Client
-	cfg *config.Config
+type allowlistChecker interface {
+	AllowedUserIDs() (map[int64]struct{}, error)
 }
 
-func NewAuthHandler(gh *github.Client, cfg *config.Config) *AuthHandler {
-	return &AuthHandler{gh: gh, cfg: cfg}
+type AuthHandler struct {
+	gh        *github.Client
+	cfg       *config.Config
+	allowlist allowlistChecker
+}
+
+func NewAuthHandler(gh *github.Client, cfg *config.Config, al allowlistChecker) *AuthHandler {
+	return &AuthHandler{gh: gh, cfg: cfg, allowlist: al}
 }
 
 // POST /auth/github/callback
@@ -45,6 +50,24 @@ func (h *AuthHandler) GitHubCallback(c *gin.Context) {
 		log.Printf("github get user failed: %v", err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication failed"})
 		return
+	}
+
+	// Check allowlist before issuing JWT — deny non-registered users at login time.
+	if h.allowlist != nil {
+		allowed, err := h.allowlist.AllowedUserIDs()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to verify access"})
+			return
+		}
+		if allowed != nil {
+			if _, ok := allowed[user.ID]; !ok {
+				c.JSON(http.StatusForbidden, gin.H{
+					"error": "your GitHub account is not authorized to access this platform",
+					"code":  "not_authorized",
+				})
+				return
+			}
+		}
 	}
 
 	token, err := h.issueJWT(user.ID, user.Login)
