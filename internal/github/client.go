@@ -136,6 +136,29 @@ func (c *Client) GetUser(ctx context.Context, accessToken string) (*User, error)
 	return &user, nil
 }
 
+// GetUserByID fetches public GitHub user info by numeric ID.
+// GitHub resolves numeric path segments to user IDs (usernames are never purely numeric).
+func (c *Client) GetUserByID(ctx context.Context, id int64) (*User, error) {
+	req, _ := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/users/%d", apiBase, id), nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("github user id=%d not found", id)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("github /users/%d returned %d", id, resp.StatusCode)
+	}
+	var user User
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 // GetUserByUsername fetches public GitHub user info by username (no auth required).
 func (c *Client) GetUserByUsername(ctx context.Context, username string) (*User, error) {
 	req, _ := http.NewRequestWithContext(ctx, "GET", apiBase+"/users/"+url.PathEscape(username), nil)

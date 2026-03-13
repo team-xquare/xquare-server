@@ -159,7 +159,11 @@ func (h *ProjectHandler) ListMembers(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"owners": proj.Owners})
+	ids := make([]int64, len(proj.Owners))
+	for i, o := range proj.Owners {
+		ids[i] = o.ID
+	}
+	c.JSON(http.StatusOK, gin.H{"owners": resolveUsernames(c, h.github, ids)})
 }
 
 // POST /projects/:project/members  {"username": "github-login"}

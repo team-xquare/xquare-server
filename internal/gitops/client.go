@@ -76,8 +76,7 @@ func (c *Client) ensureRepoFresh(forcePull bool) (*git.Repository, error) {
 }
 
 type AllowedUser struct {
-	ID       int64  `yaml:"id" json:"id"`
-	Username string `yaml:"username" json:"username"`
+	ID int64 `yaml:"id" json:"id"`
 }
 
 type allowedUsersFile struct {
@@ -184,7 +183,7 @@ func (c *Client) AddAllowedUser(actor string, user AllowedUser) error {
 	}
 	for _, u := range f.Users {
 		if u.ID == user.ID {
-			return fmt.Errorf("user %q (id=%d) is already in the allowlist", user.Username, user.ID)
+			return fmt.Errorf("user id=%d is already in the allowlist", user.ID)
 		}
 	}
 	f.Users = append(f.Users, user)
