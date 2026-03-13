@@ -78,7 +78,15 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, p)
+	ids := make([]int64, len(p.Owners))
+	for i, o := range p.Owners {
+		ids[i] = o.ID
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"owners":       resolveUsernames(c, h.github, ids),
+		"applications": p.Applications,
+		"addons":       p.Addons,
+	})
 }
 
 // POST /projects
