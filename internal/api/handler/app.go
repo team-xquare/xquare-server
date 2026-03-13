@@ -29,7 +29,7 @@ type redeployLimiter struct {
 func newRedeployLimiter() *redeployLimiter {
 	return &redeployLimiter{
 		lastRun:  make(map[string]time.Time),
-		cooldown: 60 * time.Second,
+		cooldown: 30 * time.Second,
 	}
 }
 
