@@ -38,12 +38,12 @@ func (c *Client) auth() *http.BasicAuth {
 }
 
 // ensureRepo clones or pulls the repo (must be called with lock held).
-// pull은 pullCacheTTL 이내 재요청 시 skip (read 성능 최적화).
+// pull is skipped if within pullCacheTTL (read performance optimization).
 func (c *Client) ensureRepo() (*git.Repository, error) {
 	return c.ensureRepoFresh(false)
 }
 
-// ensureRepoFresh는 forcePull=true 시 캐시 무시하고 pull한다 (write 직전).
+// ensureRepoFresh ignores the cache when forcePull=true (used before writes).
 func (c *Client) ensureRepoFresh(forcePull bool) (*git.Repository, error) {
 	repo, err := git.PlainOpen(c.repoDir)
 	if err == git.ErrRepositoryNotExists {
