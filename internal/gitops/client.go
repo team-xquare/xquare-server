@@ -290,7 +290,6 @@ func (c *Client) CreateProject(name string, owner domain.Owner, actor string) er
 		return fmt.Errorf("project %q already exists", name)
 	}
 	p := domain.Project{
-		CreatorID:    owner.ID,
 		Owners:       []domain.Owner{owner},
 		Applications: []domain.Application{},
 		Addons:       []domain.Addon{},
@@ -303,20 +302,18 @@ func (c *Client) AddProjectMember(project string, owner domain.Owner, actor stri
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
-		for i, o := range p.Owners {
+		for _, o := range p.Owners {
 			if o.ID == owner.ID {
-				// already a member — update username in case it changed
-				p.Owners[i].Username = owner.Username
-				return nil
+				return nil // already a member
 			}
 		}
 		p.Owners = append(p.Owners, owner)
 		return nil
-	}, fmt.Sprintf("feat: add member %s to project %s [actor: %s]", sanitizeCommitToken(owner.Username), project, sanitizeCommitToken(actor)))
+	}, fmt.Sprintf("feat: add member id=%d to project %s [actor: %s]", owner.ID, project, sanitizeCommitToken(actor)))
 }
 
 // RemoveProjectMember removes a project owner by GitHub ID.
-func (c *Client) RemoveProjectMember(project string, githubID int64, targetUsername, actor string) error {
+func (c *Client) RemoveProjectMember(project string, githubID int64, actor string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
@@ -328,7 +325,7 @@ func (c *Client) RemoveProjectMember(project string, githubID int64, targetUsern
 		}
 		p.Owners = owners
 		return nil
-	}, fmt.Sprintf("feat: remove member %s from project %s [actor: %s]", sanitizeCommitToken(targetUsername), project, sanitizeCommitToken(actor)))
+	}, fmt.Sprintf("feat: remove member id=%d from project %s [actor: %s]", githubID, project, sanitizeCommitToken(actor)))
 }
 
 // DeleteProject removes projects/{name}.yaml and pushes

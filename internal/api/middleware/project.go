@@ -33,9 +33,6 @@ func ProjectAccess(g *gitops.Client, adminIDs []int64) gin.HandlerFunc {
 		}
 
 		c.Set("project", p)
-		// isProjectAdmin: true if the user is a global admin or the project creator.
-		// Used by handlers that restrict owner-only operations (delete project, manage members).
-		c.Set("isProjectAdmin", admins[githubID] || p.IsCreator(githubID))
 		c.Next()
 	}
 }

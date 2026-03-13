@@ -6,19 +6,12 @@ import (
 )
 
 // Owner represents a project owner identified by their immutable GitHub ID.
-// Username is cached for display only and may be stale if the user renames.
 type Owner struct {
-	ID       int64  `yaml:"id" json:"id"`
-	Username string `yaml:"username" json:"username"`
+	ID int64 `yaml:"id" json:"id"`
 }
 
 // Project represents the full projects/{name}.yaml
 type Project struct {
-	// CreatorID is the GitHub ID of the user who created the project.
-	// Only the creator (or a global admin) may delete the project or manage members.
-	// omitempty for backward-compat: existing YAMLs without this field get 0,
-	// which falls back to Owners[0] in IsCreator().
-	CreatorID    int64         `yaml:"creator_id,omitempty" json:"creatorId,omitempty"`
 	Owners       []Owner       `yaml:"owners,omitempty" json:"owners,omitempty"`
 	Applications []Application `yaml:"applications" json:"applications"`
 	Addons       []Addon       `yaml:"addons,omitempty" json:"addons,omitempty"`
@@ -30,19 +23,6 @@ func (p *Project) HasAccess(githubID int64) bool {
 		if o.ID == githubID {
 			return true
 		}
-	}
-	return false
-}
-
-// IsCreator returns true if githubID is the project creator.
-// Falls back to Owners[0] for projects created before creator_id was introduced.
-func (p *Project) IsCreator(githubID int64) bool {
-	if p.CreatorID != 0 {
-		return p.CreatorID == githubID
-	}
-	// Backward-compat: treat first owner as creator
-	if len(p.Owners) > 0 {
-		return p.Owners[0].ID == githubID
 	}
 	return false
 }
