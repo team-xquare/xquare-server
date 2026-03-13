@@ -152,6 +152,7 @@ func main() {
 		{
 			proj.GET("", projectH.Get)
 			proj.DELETE("", projectH.Delete)
+			proj.GET("/dashboard", projectH.Dashboard)
 
 			// Members
 			proj.GET("/members", projectH.ListMembers)

@@ -233,3 +233,26 @@ func (h *ProjectHandler) RemoveMember(c *gin.Context) {
 	}
 	c.Status(http.StatusNoContent)
 }
+
+// GET /projects/:project/dashboard
+func (h *ProjectHandler) Dashboard(c *gin.Context) {
+	project := c.Param("project")
+	ns := domain.Namespace(project)
+	dashURL := fmt.Sprintf("https://%s-observability-dashboard.dsmhs.kr", project)
+
+	data, err := h.k8s.GetSecret(c.Request.Context(), ns, "grafana-admin-password")
+	if err != nil {
+		// Secret not ready yet (project just created) — return URL only
+		c.JSON(http.StatusOK, gin.H{
+			"url":      dashURL,
+			"username": "admin",
+			"password": nil,
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"url":      dashURL,
+		"username": "admin",
+		"password": string(data["password"]),
+	})
+}
