@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -142,76 +143,106 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 	}, nil
 }
 
-// StreamPodLogs streams logs from the latest running pod for an app
+// StreamPodLogs streams logs from the latest pod for an app.
+// If the pod exists but is not yet running, it polls until the container is ready
+// (up to 3 minutes) before opening the log stream — so callers never see a raw
+// Kubernetes "container is waiting" error.
 func (c *Client) StreamPodLogs(ctx context.Context, project, app string, tailLines int64, follow bool) (io.ReadCloser, error) {
 	ns := domain.Namespace(project)
-	pods, err := c.cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", app),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("list pods: %w", err)
-	}
 
-	// Find best running pod
-	var target *corev1.Pod
-	for i := range pods.Items {
-		p := &pods.Items[i]
-		if p.Status.Phase == corev1.PodRunning {
-			if target == nil || p.CreationTimestamp.After(target.CreationTimestamp.Time) {
-				target = p
+	const pollInterval = 2 * time.Second
+	const pollTimeout = 3 * time.Minute
+	deadline := time.Now().Add(pollTimeout)
+
+	for {
+		pods, err := c.cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
+			LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", app),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list pods: %w", err)
+		}
+
+		// Prefer the newest Running pod; fall back to the newest pod of any phase.
+		var target *corev1.Pod
+		for i := range pods.Items {
+			p := &pods.Items[i]
+			if p.Status.Phase == corev1.PodRunning {
+				if target == nil || p.CreationTimestamp.After(target.CreationTimestamp.Time) {
+					target = p
+				}
 			}
 		}
-	}
-	if target == nil && len(pods.Items) > 0 {
-		target = &pods.Items[len(pods.Items)-1]
-	}
-	if target == nil {
-		return nil, &ErrAppNotDeployed{App: app}
-	}
-
-	// Pod exists but container hasn't started yet — return a retriable error
-	// instead of letting the Kubernetes API return an opaque 500.
-	if target.Status.Phase != corev1.PodRunning && target.Status.Phase != corev1.PodSucceeded {
-		return nil, &ErrPodNotReady{App: app, Phase: string(target.Status.Phase)}
-	}
-	for _, cs := range target.Status.ContainerStatuses {
-		if cs.Name == app && cs.State.Waiting != nil {
-			return nil, &ErrPodNotReady{App: app, Phase: cs.State.Waiting.Reason}
+		if target == nil && len(pods.Items) > 0 {
+			target = &pods.Items[len(pods.Items)-1]
 		}
-	}
+		if target == nil {
+			return nil, &ErrAppNotDeployed{App: app}
+		}
 
-	// Resolve the container name: prefer app name, fall back to first container.
-	containerName := app
-	if len(target.Spec.Containers) > 0 {
-		found := false
-		for _, cont := range target.Spec.Containers {
-			if cont.Name == app {
-				found = true
-				break
+		// Check whether the container is actually ready to serve logs.
+		ready := target.Status.Phase == corev1.PodRunning || target.Status.Phase == corev1.PodSucceeded
+		if ready {
+			// Even if the pod is Running, the container might still be Waiting
+			// (e.g. image pull in a multi-container pod).
+			for _, cs := range target.Status.ContainerStatuses {
+				if cs.Name == app && cs.State.Waiting != nil {
+					ready = false
+					break
+				}
 			}
 		}
-		if !found {
-			containerName = target.Spec.Containers[0].Name
-		}
-	}
 
-	req := c.cs.CoreV1().Pods(ns).GetLogs(target.Name, &corev1.PodLogOptions{
-		Container: containerName,
-		TailLines: &tailLines,
-		Follow:    follow,
-	})
-	rc, err := req.Stream(ctx)
-	if err != nil {
-		// Kubernetes returns opaque errors when the container is still initialising.
-		// Surface a user-friendly message instead of a raw 500.
-		msg := err.Error()
-		if strings.Contains(msg, "waiting") || strings.Contains(msg, "ContainerCreating") ||
-			strings.Contains(msg, "PodInitializing") || strings.Contains(msg, "not running") {
-			return nil, &ErrPodNotReady{App: app, Phase: "starting"}
+		if !ready {
+			if time.Now().After(deadline) {
+				return nil, fmt.Errorf("timed out waiting for app %q to start", app)
+			}
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(pollInterval):
+				continue
+			}
 		}
-		return nil, fmt.Errorf("stream logs: %w", err)
+
+		// Resolve container name: prefer app name, fall back to first container.
+		containerName := app
+		if len(target.Spec.Containers) > 0 {
+			found := false
+			for _, cont := range target.Spec.Containers {
+				if cont.Name == app {
+					found = true
+					break
+				}
+			}
+			if !found {
+				containerName = target.Spec.Containers[0].Name
+			}
+		}
+
+		req := c.cs.CoreV1().Pods(ns).GetLogs(target.Name, &corev1.PodLogOptions{
+			Container: containerName,
+			TailLines: &tailLines,
+			Follow:    follow,
+		})
+		rc, err := req.Stream(ctx)
+		if err != nil {
+			// The container may have just transitioned to Waiting between our
+			// readiness check and the stream call — retry once more if time allows.
+			msg := err.Error()
+			if (strings.Contains(msg, "waiting") || strings.Contains(msg, "ContainerCreating") ||
+				strings.Contains(msg, "PodInitializing") || strings.Contains(msg, "not running")) &&
+				time.Now().Before(deadline) {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(pollInterval):
+					continue
+				}
+			}
+			return nil, fmt.Errorf("stream logs: %w", err)
+		}
+		return rc, nil
 	}
-	return rc, nil
 }
 
 // GetSecret reads a K8s secret
@@ -248,19 +279,6 @@ type ErrAppNotDeployed struct{ App string }
 
 func (e *ErrAppNotDeployed) Error() string {
 	return fmt.Sprintf("app %q has not been deployed yet — run: xquare deploy %s", e.App, e.App)
-}
-
-// ErrPodNotReady is returned when the pod exists but its container hasn't started yet.
-type ErrPodNotReady struct {
-	App   string
-	Phase string
-}
-
-func (e *ErrPodNotReady) Error() string {
-	if e.Phase != "" {
-		return fmt.Sprintf("app %q is starting up (%s) — logs will be available once the container is running", e.App, e.Phase)
-	}
-	return fmt.Sprintf("app %q is starting up — logs will be available once the container is running", e.App)
 }
 
 // DeleteNamespace deletes the K8s namespace for a project (cascades all resources).
