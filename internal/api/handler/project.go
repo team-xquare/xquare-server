@@ -78,12 +78,8 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 	if !ok {
 		return
 	}
-	ids := make([]int64, len(p.Owners))
-	for i, o := range p.Owners {
-		ids[i] = o.ID
-	}
 	c.JSON(http.StatusOK, gin.H{
-		"owners":       resolveUsernames(c, h.github, ids),
+		"owners":       resolveUsernames(c, h.github, p.Owners),
 		"applications": p.Applications,
 		"addons":       p.Addons,
 	})
@@ -118,8 +114,7 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 		}
 	}
 
-	owner := domain.Owner{ID: c.GetInt64("githubId")}
-	if err := h.gitops.CreateProject(req.Name, owner, c.GetString("username")); err != nil {
+	if err := h.gitops.CreateProject(req.Name, c.GetInt64("githubId"), c.GetString("username")); err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
@@ -167,11 +162,7 @@ func (h *ProjectHandler) ListMembers(c *gin.Context) {
 	if !ok {
 		return
 	}
-	ids := make([]int64, len(proj.Owners))
-	for i, o := range proj.Owners {
-		ids[i] = o.ID
-	}
-	c.JSON(http.StatusOK, gin.H{"owners": resolveUsernames(c, h.github, ids)})
+	c.JSON(http.StatusOK, gin.H{"owners": resolveUsernames(c, h.github, proj.Owners)})
 }
 
 // POST /projects/:project/members  {"username": "github-login"}
@@ -193,12 +184,11 @@ func (h *ProjectHandler) AddMember(c *gin.Context) {
 		return
 	}
 
-	owner := domain.Owner{ID: user.ID}
-	if err := h.gitops.AddProjectMember(project, owner, c.GetString("username")); err != nil {
+	if err := h.gitops.AddProjectMember(project, user.ID, c.GetString("username")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"added": owner})
+	c.JSON(http.StatusOK, gin.H{"added": user.ID})
 }
 
 // DELETE /projects/:project/members/:username
