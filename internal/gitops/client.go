@@ -75,12 +75,8 @@ func (c *Client) ensureRepoFresh(forcePull bool) (*git.Repository, error) {
 	return repo, nil
 }
 
-type AllowedUser struct {
-	ID int64 `yaml:"id" json:"id"`
-}
-
 type allowedUsersFile struct {
-	Users []AllowedUser `yaml:"users"`
+	Users []int64 `yaml:"users"`
 }
 
 const maxAllowedUsersFileBytes = 1 * 1024 * 1024 // 1 MiB
@@ -144,14 +140,14 @@ func (c *Client) AllowedUserIDs() (map[int64]struct{}, error) {
 		return nil, nil // no file → middleware treats as DENY-ALL
 	}
 	set := make(map[int64]struct{}, len(f.Users))
-	for _, u := range f.Users {
-		set[u.ID] = struct{}{}
+	for _, id := range f.Users {
+		set[id] = struct{}{}
 	}
 	return set, nil
 }
 
-// ListAllowedUsers returns the full list of allowed users.
-func (c *Client) ListAllowedUsers() ([]AllowedUser, error) {
+// ListAllowedUsers returns the full list of allowed GitHub user IDs.
+func (c *Client) ListAllowedUsers() ([]int64, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, err := c.ensureRepo(); err != nil {
@@ -162,13 +158,13 @@ func (c *Client) ListAllowedUsers() ([]AllowedUser, error) {
 		return nil, err
 	}
 	if f == nil {
-		return []AllowedUser{}, nil
+		return []int64{}, nil
 	}
 	return f.Users, nil
 }
 
-// AddAllowedUser adds a user to the allowlist. Errors if already present.
-func (c *Client) AddAllowedUser(actor string, user AllowedUser) error {
+// AddAllowedUser adds a GitHub user ID to the allowlist. Errors if already present.
+func (c *Client) AddAllowedUser(actor string, id int64) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, err := c.ensureRepo(); err != nil {
@@ -181,12 +177,12 @@ func (c *Client) AddAllowedUser(actor string, user AllowedUser) error {
 	if f == nil {
 		f = &allowedUsersFile{}
 	}
-	for _, u := range f.Users {
-		if u.ID == user.ID {
-			return fmt.Errorf("user id=%d is already in the allowlist", user.ID)
+	for _, existing := range f.Users {
+		if existing == id {
+			return fmt.Errorf("user id=%d is already in the allowlist", id)
 		}
 	}
-	f.Users = append(f.Users, user)
+	f.Users = append(f.Users, id)
 	return c.writeAllowedUsers(actor, f)
 }
 
@@ -207,12 +203,12 @@ func (c *Client) RemoveAllowedUser(actor string, githubID int64) error {
 	}
 	filtered := f.Users[:0]
 	found := false
-	for _, u := range f.Users {
-		if u.ID == githubID {
+	for _, id := range f.Users {
+		if id == githubID {
 			found = true
 			continue
 		}
-		filtered = append(filtered, u)
+		filtered = append(filtered, id)
 	}
 	if !found {
 		return fmt.Errorf("user (id=%d) not found in allowlist", githubID)
@@ -277,7 +273,7 @@ func (c *Client) readProject(name string) (*domain.Project, error) {
 }
 
 // CreateProject creates a new empty projects/{name}.yaml with the creator as first owner.
-func (c *Client) CreateProject(name string, owner domain.Owner, actor string) error {
+func (c *Client) CreateProject(name string, ownerID int64, actor string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	repo, err := c.ensureRepoFresh(true)
@@ -289,26 +285,26 @@ func (c *Client) CreateProject(name string, owner domain.Owner, actor string) er
 		return fmt.Errorf("project %q already exists", name)
 	}
 	p := domain.Project{
-		Owners:       []domain.Owner{owner},
+		Owners:       []int64{ownerID},
 		Applications: []domain.Application{},
 		Addons:       []domain.Addon{},
 	}
 	return c.writeAndPush(repo, name, &p, fmt.Sprintf("feat: create project %s [actor: %s]", name, sanitizeCommitToken(actor)))
 }
 
-// AddProjectMember adds a GitHub user as a project owner (identified by ID).
-func (c *Client) AddProjectMember(project string, owner domain.Owner, actor string) error {
+// AddProjectMember adds a GitHub user ID as a project owner.
+func (c *Client) AddProjectMember(project string, ownerID int64, actor string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
-		for _, o := range p.Owners {
-			if o.ID == owner.ID {
+		for _, id := range p.Owners {
+			if id == ownerID {
 				return nil // already a member
 			}
 		}
-		p.Owners = append(p.Owners, owner)
+		p.Owners = append(p.Owners, ownerID)
 		return nil
-	}, fmt.Sprintf("feat: add member id=%d to project %s [actor: %s]", owner.ID, project, sanitizeCommitToken(actor)))
+	}, fmt.Sprintf("feat: add member id=%d to project %s [actor: %s]", ownerID, project, sanitizeCommitToken(actor)))
 }
 
 // RemoveProjectMember removes a project owner by GitHub ID.
@@ -317,9 +313,9 @@ func (c *Client) RemoveProjectMember(project string, githubID int64, actor strin
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
 		owners := p.Owners[:0]
-		for _, o := range p.Owners {
-			if o.ID != githubID {
-				owners = append(owners, o)
+		for _, id := range p.Owners {
+			if id != githubID {
+				owners = append(owners, id)
 			}
 		}
 		p.Owners = owners

@@ -5,22 +5,17 @@ import (
 	"strings"
 )
 
-// Owner represents a project owner identified by their immutable GitHub ID.
-type Owner struct {
-	ID int64 `yaml:"id" json:"id"`
-}
-
 // Project represents the full projects/{name}.yaml
 type Project struct {
-	Owners       []Owner       `yaml:"owners,omitempty" json:"owners,omitempty"`
+	Owners       []int64       `yaml:"owners,omitempty" json:"owners,omitempty"`
 	Applications []Application `yaml:"applications" json:"applications"`
 	Addons       []Addon       `yaml:"addons,omitempty" json:"addons,omitempty"`
 }
 
 // HasAccess returns true if the given GitHub ID is an owner of this project.
 func (p *Project) HasAccess(githubID int64) bool {
-	for _, o := range p.Owners {
-		if o.ID == githubID {
+	for _, id := range p.Owners {
+		if id == githubID {
 			return true
 		}
 	}
