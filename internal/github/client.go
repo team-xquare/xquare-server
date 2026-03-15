@@ -336,11 +336,11 @@ func (c *Client) buildInstallURL(ctx context.Context, appToken, owner string) st
 		return fmt.Sprintf("https://github.com/apps/%s/installations/new", c.appSlug)
 	}
 
-	targetType := user.Type
-	if targetType == "" {
-		targetType = "User"
+	if user.Type == "Organization" {
+		return fmt.Sprintf("https://github.com/apps/%s/installations/new/permissions?target_id=%d&target_type=Organization",
+			c.appSlug, user.ID)
 	}
-	return fmt.Sprintf("https://github.com/apps/%s/installations/new/permissions?target_id=%d&target_type=%s",
-		c.appSlug, user.ID, targetType)
+	return fmt.Sprintf("https://github.com/apps/%s/installations/new/permissions?target_id=%d",
+		c.appSlug, user.ID)
 }
 
