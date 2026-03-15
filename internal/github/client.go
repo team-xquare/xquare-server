@@ -298,7 +298,7 @@ func (c *Client) GetRepoInstallationID(ctx context.Context, owner, repo string) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 404 {
-		installURL := fmt.Sprintf("https://github.com/apps/%s/installations/new", c.appSlug)
+		installURL := c.buildInstallURL(ctx, appToken, owner)
 		return "", &ErrAppNotInstalled{Owner: owner, Repo: repo, InstallURL: installURL}
 	}
 
@@ -310,3 +310,37 @@ func (c *Client) GetRepoInstallationID(ctx context.Context, owner, repo string) 
 	}
 	return fmt.Sprintf("%d", result.ID), nil
 }
+
+// buildInstallURL returns a targeted GitHub App installation URL with the owner's
+// target_id pre-filled so the user lands directly on the correct org/user page.
+// Falls back to the generic installation URL if the owner lookup fails.
+func (c *Client) buildInstallURL(ctx context.Context, appToken, owner string) string {
+	req, err := http.NewRequestWithContext(ctx, "GET", apiBase+"/users/"+url.PathEscape(owner), nil)
+	if err != nil {
+		return fmt.Sprintf("https://github.com/apps/%s/installations/new", c.appSlug)
+	}
+	req.Header.Set("Authorization", "Bearer "+appToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		return fmt.Sprintf("https://github.com/apps/%s/installations/new", c.appSlug)
+	}
+	defer resp.Body.Close()
+
+	var user struct {
+		ID   int64  `json:"id"`
+		Type string `json:"type"` // "User" or "Organization"
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil || user.ID == 0 {
+		return fmt.Sprintf("https://github.com/apps/%s/installations/new", c.appSlug)
+	}
+
+	targetType := user.Type
+	if targetType == "" {
+		targetType = "User"
+	}
+	return fmt.Sprintf("https://github.com/apps/%s/installations/new/permissions?target_id=%d&target_type=%s",
+		c.appSlug, user.ID, targetType)
+}
+
