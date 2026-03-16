@@ -298,11 +298,14 @@ func (c *Client) GetRepoInstallationID(ctx context.Context, owner, repo string) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 404 {
-		// Distinguish: repo doesn't exist vs GitHub App not installed.
-		if !c.repoExists(ctx, appToken, owner, repo) {
+		// Distinguish: repo doesn't exist vs GitHub App not installed (or private repo).
+		// repoExists uses unauthenticated request — returns false for private repos too.
+		// So if unauthenticated 404, check owner existence: if owner doesn't exist → truly not found;
+		// if owner exists → could be private repo, return ErrAppNotInstalled.
+		if !c.repoExists(ctx, owner, repo) && !c.ownerExists(ctx, owner) {
 			return "", fmt.Errorf("repository %s/%s not found", owner, repo)
 		}
-		installURL := c.buildInstallURL(ctx, appToken, owner)
+		installURL := c.buildInstallURL(ctx, owner)
 		return "", &ErrAppNotInstalled{Owner: owner, Repo: repo, InstallURL: installURL}
 	}
 
@@ -315,12 +318,9 @@ func (c *Client) GetRepoInstallationID(ctx context.Context, owner, repo string) 
 	return fmt.Sprintf("%d", result.ID), nil
 }
 
-// repoExists checks whether a public repository exists on GitHub.
-// Uses an unauthenticated request because App JWT can only access repos
-// where the app is installed — which is exactly the case we're trying to distinguish.
-// This is safe: create_app is a JWT-authenticated endpoint so only valid users reach here.
-// Only returns false on a definitive 404; treats other errors as "assume exists".
-func (c *Client) repoExists(ctx context.Context, _, owner, repo string) bool {
+// repoExists checks whether a public repository exists on GitHub (unauthenticated).
+// Returns false only on definitive 404; private repos also return 404 here.
+func (c *Client) repoExists(ctx context.Context, owner, repo string) bool {
 	req, err := http.NewRequestWithContext(ctx, "GET",
 		fmt.Sprintf("%s/repos/%s/%s", apiBase, url.PathEscape(owner), url.PathEscape(repo)), nil)
 	if err != nil {
@@ -329,7 +329,23 @@ func (c *Client) repoExists(ctx context.Context, _, owner, repo string) bool {
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return true // assume exists on network errors
+		return true
+	}
+	resp.Body.Close()
+	return resp.StatusCode != 404
+}
+
+// ownerExists checks whether a GitHub user or org exists (unauthenticated).
+func (c *Client) ownerExists(ctx context.Context, owner string) bool {
+	req, err := http.NewRequestWithContext(ctx, "GET",
+		fmt.Sprintf("%s/users/%s", apiBase, url.PathEscape(owner)), nil)
+	if err != nil {
+		return true
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return true
 	}
 	resp.Body.Close()
 	return resp.StatusCode != 404
@@ -338,7 +354,7 @@ func (c *Client) repoExists(ctx context.Context, _, owner, repo string) bool {
 // buildInstallURL returns a targeted GitHub App installation URL with the owner's
 // target_id pre-filled so the user lands directly on the correct org/user page.
 // Falls back to the generic installation URL if the owner lookup fails.
-func (c *Client) buildInstallURL(ctx context.Context, _ /*appToken*/, owner string) string {
+func (c *Client) buildInstallURL(ctx context.Context, owner string) string {
 	req, err := http.NewRequestWithContext(ctx, "GET", apiBase+"/users/"+url.PathEscape(owner), nil)
 	if err != nil {
 		return fmt.Sprintf("https://github.com/apps/%s/installations/new", c.appSlug)
