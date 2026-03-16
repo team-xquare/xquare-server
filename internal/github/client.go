@@ -326,10 +326,10 @@ func (c *Client) repoExists(ctx context.Context, _, owner, repo string) bool {
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return false
+		return true // assume exists on network errors to avoid false "not found"
 	}
 	resp.Body.Close()
-	return resp.StatusCode == 200
+	return resp.StatusCode != 404 // only 404 definitively means repo doesn't exist
 }
 
 // buildInstallURL returns a targeted GitHub App installation URL with the owner's
