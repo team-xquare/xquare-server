@@ -359,7 +359,7 @@ func (c *Client) buildInstallURL(ctx context.Context, _ /*appToken*/, owner stri
 		return fmt.Sprintf("https://github.com/apps/%s/installations/new", c.appSlug)
 	}
 
-	return fmt.Sprintf("https://github.com/apps/%s/installations/new/permissions?target_id=%d",
+	return fmt.Sprintf("https://github.com/apps/%s/installations/new/permissions?suggested_target_id=%d",
 		c.appSlug, user.ID)
 }
 
