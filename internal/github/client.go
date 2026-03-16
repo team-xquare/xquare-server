@@ -338,12 +338,11 @@ func (c *Client) repoExists(ctx context.Context, _, owner, repo string) bool {
 // buildInstallURL returns a targeted GitHub App installation URL with the owner's
 // target_id pre-filled so the user lands directly on the correct org/user page.
 // Falls back to the generic installation URL if the owner lookup fails.
-func (c *Client) buildInstallURL(ctx context.Context, appToken, owner string) string {
+func (c *Client) buildInstallURL(ctx context.Context, _ /*appToken*/, owner string) string {
 	req, err := http.NewRequestWithContext(ctx, "GET", apiBase+"/users/"+url.PathEscape(owner), nil)
 	if err != nil {
 		return fmt.Sprintf("https://github.com/apps/%s/installations/new", c.appSlug)
 	}
-	req.Header.Set("Authorization", "Bearer "+appToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := c.httpClient.Do(req)
