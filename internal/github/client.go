@@ -315,21 +315,23 @@ func (c *Client) GetRepoInstallationID(ctx context.Context, owner, repo string) 
 	return fmt.Sprintf("%d", result.ID), nil
 }
 
-// repoExists checks whether a repository exists on GitHub.
-// Uses an unauthenticated request so it works for repos where the App is not installed.
-func (c *Client) repoExists(ctx context.Context, _, owner, repo string) bool {
+// repoExists checks whether a repository exists using the App JWT.
+// App JWT can query public repo metadata regardless of installation status.
+// Only returns false on a definitive 404; treats other errors as "assume exists".
+func (c *Client) repoExists(ctx context.Context, appToken, owner, repo string) bool {
 	req, err := http.NewRequestWithContext(ctx, "GET",
 		fmt.Sprintf("%s/repos/%s/%s", apiBase, url.PathEscape(owner), url.PathEscape(repo)), nil)
 	if err != nil {
-		return false
+		return true
 	}
+	req.Header.Set("Authorization", "Bearer "+appToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return true // assume exists on network errors to avoid false "not found"
+		return true // assume exists on network errors
 	}
 	resp.Body.Close()
-	return resp.StatusCode != 404 // only 404 definitively means repo doesn't exist
+	return resp.StatusCode != 404
 }
 
 // buildInstallURL returns a targeted GitHub App installation URL with the owner's
