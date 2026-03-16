@@ -298,6 +298,10 @@ func (c *Client) GetRepoInstallationID(ctx context.Context, owner, repo string) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 404 {
+		// Distinguish: repo doesn't exist vs GitHub App not installed.
+		if !c.repoExists(ctx, appToken, owner, repo) {
+			return "", fmt.Errorf("repository %s/%s not found", owner, repo)
+		}
 		installURL := c.buildInstallURL(ctx, appToken, owner)
 		return "", &ErrAppNotInstalled{Owner: owner, Repo: repo, InstallURL: installURL}
 	}
@@ -309,6 +313,23 @@ func (c *Client) GetRepoInstallationID(ctx context.Context, owner, repo string) 
 		return "", err
 	}
 	return fmt.Sprintf("%d", result.ID), nil
+}
+
+// repoExists checks whether a repository exists on GitHub using the App JWT.
+func (c *Client) repoExists(ctx context.Context, appToken, owner, repo string) bool {
+	req, err := http.NewRequestWithContext(ctx, "GET",
+		fmt.Sprintf("%s/repos/%s/%s", apiBase, url.PathEscape(owner), url.PathEscape(repo)), nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Authorization", "Bearer "+appToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == 200
 }
 
 // buildInstallURL returns a targeted GitHub App installation URL with the owner's
