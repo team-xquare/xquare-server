@@ -315,16 +315,17 @@ func (c *Client) GetRepoInstallationID(ctx context.Context, owner, repo string) 
 	return fmt.Sprintf("%d", result.ID), nil
 }
 
-// repoExists checks whether a repository exists using the App JWT.
-// App JWT can query public repo metadata regardless of installation status.
+// repoExists checks whether a public repository exists on GitHub.
+// Uses an unauthenticated request because App JWT can only access repos
+// where the app is installed — which is exactly the case we're trying to distinguish.
+// This is safe: create_app is a JWT-authenticated endpoint so only valid users reach here.
 // Only returns false on a definitive 404; treats other errors as "assume exists".
-func (c *Client) repoExists(ctx context.Context, appToken, owner, repo string) bool {
+func (c *Client) repoExists(ctx context.Context, _, owner, repo string) bool {
 	req, err := http.NewRequestWithContext(ctx, "GET",
 		fmt.Sprintf("%s/repos/%s/%s", apiBase, url.PathEscape(owner), url.PathEscape(repo)), nil)
 	if err != nil {
 		return true
 	}
-	req.Header.Set("Authorization", "Bearer "+appToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
