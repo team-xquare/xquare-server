@@ -315,14 +315,14 @@ func (c *Client) GetRepoInstallationID(ctx context.Context, owner, repo string) 
 	return fmt.Sprintf("%d", result.ID), nil
 }
 
-// repoExists checks whether a repository exists on GitHub using the App JWT.
-func (c *Client) repoExists(ctx context.Context, appToken, owner, repo string) bool {
+// repoExists checks whether a repository exists on GitHub.
+// Uses an unauthenticated request so it works for repos where the App is not installed.
+func (c *Client) repoExists(ctx context.Context, _, owner, repo string) bool {
 	req, err := http.NewRequestWithContext(ctx, "GET",
 		fmt.Sprintf("%s/repos/%s/%s", apiBase, url.PathEscape(owner), url.PathEscape(repo)), nil)
 	if err != nil {
 		return false
 	}
-	req.Header.Set("Authorization", "Bearer "+appToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
