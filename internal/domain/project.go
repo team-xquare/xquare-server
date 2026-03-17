@@ -293,11 +293,11 @@ func ValidEndpoints(endpoints []Endpoint) error {
 //   - *.*.dsmhs.kr  (4th-level domains, e.g. a.api.dsmhs.kr)
 func ValidRouteHost(host string) error {
 	h := strings.ToLower(strings.TrimSpace(host))
-	// Block 4th-level (or deeper) dsmhs.kr domains: must be exactly <label>.dsmhs.kr
+	// Block multi-level dsmhs.kr subdomains: must be exactly <label>.dsmhs.kr
 	if strings.HasSuffix(h, ".dsmhs.kr") {
 		subdomain := strings.TrimSuffix(h, ".dsmhs.kr")
 		if strings.Contains(subdomain, ".") {
-			return fmt.Errorf("route host %q is a 4th-level domain; only <name>.dsmhs.kr is allowed", host)
+			return fmt.Errorf("route host %q contains multiple subdomain levels; only <name>.dsmhs.kr is allowed", host)
 		}
 	}
 	if strings.HasSuffix(h, "-xquare-infra.dsmhs.kr") {
