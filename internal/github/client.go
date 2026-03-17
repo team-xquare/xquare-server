@@ -298,15 +298,27 @@ func (c *Client) GetRepoInstallationID(ctx context.Context, owner, repo string) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 404 {
-		// Distinguish: repo doesn't exist vs GitHub App not installed (or private repo).
-		// repoExists uses unauthenticated request — returns false for private repos too.
-		// So if unauthenticated 404, check owner existence: if owner doesn't exist → truly not found;
-		// if owner exists → could be private repo, return ErrAppNotInstalled.
-		if !c.repoExists(ctx, owner, repo) && !c.ownerExists(ctx, owner) {
-			return "", fmt.Errorf("repository %s/%s not found", owner, repo)
+		// Three possible cases:
+		// 1. Repo is public and doesn't exist → "repo not found"
+		// 2. Repo is private, App not installed on owner → install URL
+		// 3. Repo is public/private, App installed on owner but not on this specific repo → "repo not found"
+		//
+		// Strategy:
+		// - If unauthenticated check shows repo exists publicly → App installed but not on this repo? shouldn't happen
+		//   (if repo exists publicly and App is installed somewhere, /installation would return 200)
+		//   Actually this means App is NOT installed on owner at all.
+		// - Check App installation on owner with App JWT:
+		//   - If owner has App installed → repo truly doesn't exist (or was deleted)
+		//   - If owner doesn't have App → could be private repo → return install URL
+		if c.repoExists(ctx, owner, repo) || !c.ownerHasApp(ctx, appToken, owner) {
+			// Public repo exists but app not installed on it, OR owner doesn't have app at all
+			// If owner doesn't have app → private repo possible → install URL
+			if !c.ownerHasApp(ctx, appToken, owner) {
+				installURL := c.buildInstallURL(ctx, owner)
+				return "", &ErrAppNotInstalled{Owner: owner, Repo: repo, InstallURL: installURL}
+			}
 		}
-		installURL := c.buildInstallURL(ctx, owner)
-		return "", &ErrAppNotInstalled{Owner: owner, Repo: repo, InstallURL: installURL}
+		return "", fmt.Errorf("repository %s/%s not found", owner, repo)
 	}
 
 	var result struct {
@@ -333,6 +345,29 @@ func (c *Client) repoExists(ctx context.Context, owner, repo string) bool {
 	}
 	resp.Body.Close()
 	return resp.StatusCode != 404
+}
+
+// ownerHasApp checks whether the GitHub App is installed on the given owner (user or org)
+// using the App JWT. Returns true if installed, false if not installed or on error.
+func (c *Client) ownerHasApp(ctx context.Context, appToken, owner string) bool {
+	// Try org endpoint first, fall back to user endpoint
+	for _, path := range []string{"/orgs/" + url.PathEscape(owner) + "/installation", "/users/" + url.PathEscape(owner) + "/installation"} {
+		req, err := http.NewRequestWithContext(ctx, "GET", apiBase+path, nil)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Authorization", "Bearer "+appToken)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			continue
+		}
+		resp.Body.Close()
+		if resp.StatusCode == 200 {
+			return true
+		}
+	}
+	return false
 }
 
 // ownerExists checks whether a GitHub user or org exists (unauthenticated).
