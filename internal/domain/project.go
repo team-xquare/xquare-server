@@ -282,14 +282,24 @@ func ValidEndpoints(endpoints []Endpoint) error {
 	return nil
 }
 
-// ValidRouteHost returns an error if the hostname is a reserved infrastructure domain.
+// ValidRouteHost returns an error if the hostname is a reserved infrastructure domain
+// or is a 4th-level domain (subdomain of *.dsmhs.kr is already 3rd level; any dot in
+// the subdomain part makes it 4th level or deeper, which is not supported).
 // Blocked patterns:
 //   - *-xquare-infra.dsmhs.kr  (harbor, argocd, argocdwebhook, argo-events, argo-workflows, vault, longhorn, goldilocks)
 //   - xquare-remote-access-*.dsmhs.kr  (per-project DB tunnel access servers)
 //   - *-observability-dashboard.dsmhs.kr  (per-project Grafana dashboards)
 //   - xquare-server.dsmhs.kr  (the API server itself)
+//   - *.*.dsmhs.kr  (4th-level domains, e.g. a.api.dsmhs.kr)
 func ValidRouteHost(host string) error {
 	h := strings.ToLower(strings.TrimSpace(host))
+	// Block multi-level dsmhs.kr subdomains: must be exactly <label>.dsmhs.kr
+	if strings.HasSuffix(h, ".dsmhs.kr") {
+		subdomain := strings.TrimSuffix(h, ".dsmhs.kr")
+		if strings.Contains(subdomain, ".") {
+			return fmt.Errorf("route host %q contains multiple subdomain levels; only <name>.dsmhs.kr is allowed", host)
+		}
+	}
 	if strings.HasSuffix(h, "-xquare-infra.dsmhs.kr") {
 		return fmt.Errorf("route host %q is a reserved infrastructure domain", host)
 	}
