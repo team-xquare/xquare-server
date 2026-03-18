@@ -158,6 +158,7 @@ func AddonPort(addonType string) int {
 		"opensearch":    9200,
 		"elasticsearch": 9200,
 		"qdrant":        6333,
+		"seaweedfs":     8333,
 	}
 	if p, ok := ports[addonType]; ok {
 		return p
@@ -226,11 +227,12 @@ var validAddonTypes = map[string]bool{
 	"opensearch":    true,
 	"elasticsearch": true,
 	"qdrant":        true,
+	"seaweedfs":     true,
 }
 
 func ValidAddonType(t string) error {
 	if !validAddonTypes[t] {
-		return fmt.Errorf("unsupported addon type %q: must be one of mysql, postgresql, redis, mongodb, kafka, rabbitmq, opensearch, elasticsearch, qdrant", t)
+		return fmt.Errorf("unsupported addon type %q: must be one of mysql, postgresql, redis, mongodb, kafka, rabbitmq, opensearch, elasticsearch, qdrant, seaweedfs", t)
 	}
 	return nil
 }
