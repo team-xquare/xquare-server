@@ -140,10 +140,16 @@ type Endpoint struct {
 
 // Addon represents one entry in addons[]
 type Addon struct {
-	Name      string `yaml:"name" json:"name"`
-	Type      string `yaml:"type" json:"type"`
-	Storage   string `yaml:"storage" json:"storage"`
-	Bootstrap string `yaml:"bootstrap,omitempty" json:"bootstrap,omitempty"`
+	Name      string        `yaml:"name" json:"name"`
+	Type      string        `yaml:"type" json:"type"`
+	Storage   string        `yaml:"storage" json:"storage"`
+	Bootstrap string        `yaml:"bootstrap,omitempty" json:"bootstrap,omitempty"`
+	Buckets   []AddonBucket `yaml:"buckets,omitempty" json:"buckets,omitempty"`
+}
+
+// AddonBucket represents one S3 bucket in a seaweedfs addon
+type AddonBucket struct {
+	Name string `yaml:"name" json:"name"`
 }
 
 // AddonPort returns the default port for an addon type
