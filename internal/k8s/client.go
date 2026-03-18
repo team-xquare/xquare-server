@@ -265,9 +265,14 @@ func (c *Client) GetAccessServerPassword(ctx context.Context, project string) (s
 }
 
 // AddonReady returns true if the addon's StatefulSet exists and has at least one ready replica.
-func (c *Client) AddonReady(ctx context.Context, project, addonName string) bool {
+// addonType is used to determine the correct StatefulSet name (e.g. seaweedfs uses -filer suffix).
+func (c *Client) AddonReady(ctx context.Context, project, addonName, addonType string) bool {
 	ns := domain.Namespace(project)
-	sts, err := c.cs.AppsV1().StatefulSets(ns).Get(ctx, addonName, metav1.GetOptions{})
+	stsName := addonName
+	if addonType == "seaweedfs" {
+		stsName = addonName + "-filer"
+	}
+	sts, err := c.cs.AppsV1().StatefulSets(ns).Get(ctx, stsName, metav1.GetOptions{})
 	if err != nil {
 		return false
 	}

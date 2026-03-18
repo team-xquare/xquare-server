@@ -74,7 +74,7 @@ func (h *AddonHandler) List(c *gin.Context) {
 			Name:    a.Name,
 			Type:    a.Type,
 			Storage: a.Storage,
-			Ready:   h.k8s.AddonReady(c.Request.Context(), project, a.Name),
+			Ready:   h.k8s.AddonReady(c.Request.Context(), project, a.Name, a.Type),
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"addons": items})
@@ -162,7 +162,7 @@ func (h *AddonHandler) Connection(c *gin.Context) {
 	}
 
 	port := domain.AddonPort(addon.Type)
-	ready := h.k8s.AddonReady(c.Request.Context(), project, addonName)
+	ready := h.k8s.AddonReady(c.Request.Context(), project, addonName, addon.Type)
 
 	password, err := h.k8s.GetAccessServerPassword(c.Request.Context(), project)
 	if err != nil {
