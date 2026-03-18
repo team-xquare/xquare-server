@@ -194,6 +194,7 @@ func main() {
 			{
 				addons.GET("", addonH.List)
 				addons.POST("", createRL, addonH.Create)
+				addons.PUT("/:addon", addonH.Update)
 				addons.DELETE("/:addon", addonH.Delete)
 				addons.GET("/:addon/connection", addonH.Connection)
 			}
