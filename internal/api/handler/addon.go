@@ -161,20 +161,40 @@ func (h *AddonHandler) Connection(c *gin.Context) {
 		return
 	}
 
+	port := domain.AddonPort(addon.Type)
+	ready := h.k8s.AddonReady(c.Request.Context(), project, addonName)
+
 	password, err := h.k8s.GetAccessServerPassword(c.Request.Context(), project)
 	if err != nil {
 		password = ""
 	}
 
-	port := domain.AddonPort(addon.Type)
-	ready := h.k8s.AddonReady(c.Request.Context(), project, addonName)
-
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"name":     addon.Name,
 		"type":     addon.Type,
 		"host":     "xquare-remote-access-" + project + ".dsmhs.kr",
 		"port":     port,
 		"password": password,
 		"ready":    ready,
-	})
+	}
+
+	if addon.Type == "seaweedfs" {
+		ns := domain.Namespace(project)
+		type bucketCreds struct {
+			Name      string `json:"name"`
+			AccessKey string `json:"accessKey"`
+			SecretKey string `json:"secretKey"`
+		}
+		var creds []bucketCreds
+		for _, b := range addon.Buckets {
+			creds = append(creds, bucketCreds{
+				Name:      b.Name,
+				AccessKey: ns + "-" + addonName + "-" + b.Name,
+				SecretKey: ns + "-" + addonName + "-" + b.Name + "-secret",
+			})
+		}
+		resp["buckets"] = creds
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
