@@ -401,6 +401,21 @@ func (c *Client) AddAddon(project string, addon domain.Addon, actor string) erro
 	}, fmt.Sprintf("feat: add addon %s to %s [actor: %s]", addon.Name, project, sanitizeCommitToken(actor)))
 }
 
+// UpdateAddon updates mutable fields (buckets) of an existing addon
+func (c *Client) UpdateAddon(project, addonName string, buckets []domain.AddonBucket, actor string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.retryUpdate(project, func(p *domain.Project) error {
+		for i, a := range p.Addons {
+			if a.Name == addonName {
+				p.Addons[i].Buckets = buckets
+				return nil
+			}
+		}
+		return fmt.Errorf("addon %q not found", addonName)
+	}, fmt.Sprintf("feat: update addon %s in %s [actor: %s]", addonName, project, sanitizeCommitToken(actor)))
+}
+
 // DeleteAddon removes an addon from the project
 func (c *Client) DeleteAddon(project, addonName, actor string) error {
 	c.mu.Lock()

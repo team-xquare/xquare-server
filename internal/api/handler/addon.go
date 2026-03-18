@@ -127,6 +127,48 @@ func (h *AddonHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, addon)
 }
 
+// PUT /projects/:project/addons/:addon
+func (h *AddonHandler) Update(c *gin.Context) {
+	project := c.Param("project")
+	addonName := c.Param("addon")
+
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
+	var addon *domain.Addon
+	for i := range proj.Addons {
+		if proj.Addons[i].Name == addonName {
+			addon = &proj.Addons[i]
+			break
+		}
+	}
+	if addon == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "addon not found"})
+		return
+	}
+
+	var req struct {
+		Buckets []domain.AddonBucket `json:"buckets"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if addon.Type != "seaweedfs" && len(req.Buckets) > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "buckets are only supported for seaweedfs addons"})
+		return
+	}
+
+	if err := h.gitops.UpdateAddon(project, addonName, req.Buckets, c.GetString("username")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"name": addonName, "buckets": req.Buckets})
+}
+
 // DELETE /projects/:project/addons/:addon
 func (h *AddonHandler) Delete(c *gin.Context) {
 	project := c.Param("project")
