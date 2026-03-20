@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -215,17 +216,20 @@ func (h *AddonHandler) Connection(c *gin.Context) {
 	ready := h.k8s.AddonReady(c.Request.Context(), project, addonName, addon.Type)
 
 	password, err := h.k8s.GetAccessServerPassword(c.Request.Context(), project)
+	tunnelReady := err == nil
 	if err != nil {
+		log.Printf("warn: GetAccessServerPassword %s: %v", project, err)
 		password = ""
 	}
 
 	resp := gin.H{
-		"name":     addon.Name,
-		"type":     addon.Type,
-		"host":     "xquare-remote-access-" + project + ".dsmhs.kr",
-		"port":     port,
-		"password": password,
-		"ready":    ready,
+		"name":        addon.Name,
+		"type":        addon.Type,
+		"host":        "xquare-remote-access-" + project + ".dsmhs.kr",
+		"port":        port,
+		"password":    password,
+		"ready":       ready,
+		"tunnelReady": tunnelReady,
 	}
 
 	if addon.Type == "seaweedfs" {
