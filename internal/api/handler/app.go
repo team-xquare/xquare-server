@@ -139,7 +139,23 @@ func (h *AppHandler) Get(c *gin.Context) {
 	}
 	for _, a := range proj.Applications {
 		if a.Name == app {
-			c.JSON(http.StatusOK, a)
+			// Enrich with top-level buildType for consistency with the List endpoint.
+			type appDetail struct {
+				Name                 string `json:"name"`
+				BuildType            string `json:"buildType,omitempty"`
+				DisableNetworkPolicy bool   `json:"disableNetworkPolicy,omitempty"`
+				GitHub               any    `json:"github"`
+				Build                any    `json:"build"`
+				Endpoints            any    `json:"endpoints,omitempty"`
+			}
+			c.JSON(http.StatusOK, appDetail{
+				Name:                 a.Name,
+				BuildType:            a.Build.BuildType(),
+				DisableNetworkPolicy: a.DisableNetworkPolicy,
+				GitHub:               a.GitHub,
+				Build:                a.Build,
+				Endpoints:            a.Endpoints,
+			})
 			return
 		}
 	}
