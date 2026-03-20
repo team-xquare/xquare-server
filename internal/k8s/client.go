@@ -58,6 +58,7 @@ func NewClient(cfg *config.K8sConfig) (*Client, error) {
 type AppStatus struct {
 	Name      string         `json:"name"`
 	Status    string         `json:"status"` // running, pending, failed, stopped, not_deployed
+	Message   string         `json:"message,omitempty"` // human-readable reason for current status (e.g. deployment condition message)
 	Scale     Scale          `json:"scale"`
 	Version   string         `json:"version"`
 	Instances []InstanceInfo `json:"instances"`
@@ -73,6 +74,9 @@ type InstanceInfo struct {
 	Ready    bool   `json:"ready"`
 	Restarts int32  `json:"restarts"`
 	Since    string `json:"since,omitempty"`
+	// Reason is the container waiting/terminated reason (e.g. CrashLoopBackOff, OOMKilled, Error).
+	// Empty when the container is running normally.
+	Reason string `json:"reason,omitempty"`
 }
 
 // GetAppStatus returns the K8s deployment status for an app
@@ -98,6 +102,7 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 	}
 
 	status := "pending"
+	statusMessage := ""
 	if dep.Status.ReadyReplicas == dep.Status.Replicas && dep.Status.Replicas > 0 {
 		status = "running"
 	} else if dep.Status.Replicas == 0 {
@@ -106,6 +111,9 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 	for _, cond := range dep.Status.Conditions {
 		if cond.Type == "Available" && cond.Status == "False" && dep.Status.ReadyReplicas == 0 {
 			status = "failed"
+			if cond.Message != "" {
+				statusMessage = cond.Message
+			}
 		}
 	}
 
@@ -117,16 +125,27 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 	for _, pod := range pods.Items {
 		ready := false
 		var restarts int32
+		var reason string
 		for _, cs := range pod.Status.ContainerStatuses {
 			if cs.Name == app {
 				ready = cs.Ready
 				restarts = cs.RestartCount
+				// Capture the most actionable failure reason:
+				// prefer Waiting reason (CrashLoopBackOff) over Terminated reason (OOMKilled, Error).
+				if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+					reason = cs.State.Waiting.Reason
+				} else if cs.State.Terminated != nil && cs.State.Terminated.Reason != "" {
+					reason = cs.State.Terminated.Reason
+				} else if cs.LastTerminationState.Terminated != nil && cs.LastTerminationState.Terminated.Reason != "" {
+					reason = cs.LastTerminationState.Terminated.Reason
+				}
 			}
 		}
 		inst := InstanceInfo{
 			Status:   strings.ToLower(string(pod.Status.Phase)),
 			Ready:    ready,
 			Restarts: restarts,
+			Reason:   reason,
 		}
 		if pod.Status.StartTime != nil {
 			inst.Since = pod.Status.StartTime.UTC().Format("2006-01-02T15:04:05Z")
@@ -144,6 +163,7 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 	return &AppStatus{
 		Name:      app,
 		Status:    status,
+		Message:   statusMessage,
 		Scale:     Scale{Desired: desired, Running: dep.Status.ReadyReplicas},
 		Version:   hash,
 		Instances: instances,
