@@ -63,6 +63,7 @@ func (h *ProjectHandler) List(c *gin.Context) {
 
 // GET /projects/:project
 func (h *ProjectHandler) Get(c *gin.Context) {
+	project := c.Param("project")
 	p, ok := projectFromCtx(c)
 	if !ok {
 		return
@@ -87,10 +88,30 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 			Endpoints:            a.Endpoints,
 		})
 	}
+	// Enrich addons with live ready status, consistent with GET /projects/:project/addons.
+	type addonSummary struct {
+		Name    string `json:"name"`
+		Type    string `json:"type"`
+		Storage string `json:"storage"`
+		Ready   bool   `json:"ready"`
+	}
+	addonItems := make([]addonSummary, 0, len(p.Addons))
+	for _, a := range p.Addons {
+		ready := false
+		if h.k8s != nil {
+			ready = h.k8s.AddonReady(c.Request.Context(), project, a.Name, a.Type)
+		}
+		addonItems = append(addonItems, addonSummary{
+			Name:    a.Name,
+			Type:    a.Type,
+			Storage: a.Storage,
+			Ready:   ready,
+		})
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"owners":       resolveUsernames(c, h.github, p.Owners),
 		"applications": summaries,
-		"addons":       p.Addons,
+		"addons":       addonItems,
 	})
 }
 
