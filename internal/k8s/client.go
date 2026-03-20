@@ -103,9 +103,14 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 
 	status := "pending"
 	statusMessage := ""
+	desiredReplicas := int32(1)
+	if dep.Spec.Replicas != nil {
+		desiredReplicas = *dep.Spec.Replicas
+	}
 	if dep.Status.ReadyReplicas == dep.Status.Replicas && dep.Status.Replicas > 0 {
 		status = "running"
-	} else if dep.Status.Replicas == 0 {
+	} else if desiredReplicas == 0 {
+		// Intentionally scaled to zero (user requested 0 replicas)
 		status = "stopped"
 	}
 	for _, cond := range dep.Status.Conditions {
@@ -153,18 +158,11 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 		instances = append(instances, inst)
 	}
 
-	// dep.Spec.Replicas is a pointer — it's nil when the field is unset (e.g.
-	// the deployment was just created and the defaulter hasn't run yet).
-	var desired int32
-	if dep.Spec.Replicas != nil {
-		desired = *dep.Spec.Replicas
-	}
-
 	return &AppStatus{
 		Name:      app,
 		Status:    status,
 		Message:   statusMessage,
-		Scale:     Scale{Desired: desired, Running: dep.Status.ReadyReplicas},
+		Scale:     Scale{Desired: desiredReplicas, Running: dep.Status.ReadyReplicas},
 		Version:   hash,
 		Instances: instances,
 	}, nil
