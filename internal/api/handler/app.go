@@ -326,6 +326,23 @@ func (h *AppHandler) Update(c *gin.Context) {
 	}
 	updated.Name = appName // enforce from path
 
+	// Verify app exists in the project before making expensive GitHub API calls.
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
+	appExists := false
+	for _, a := range proj.Applications {
+		if a.Name == appName {
+			appExists = true
+			break
+		}
+	}
+	if !appExists {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("app %q not found in project %q", appName, project)})
+		return
+	}
+
 	// disableNetworkPolicy is admin-only
 	if updated.DisableNetworkPolicy && !h.isAdmin(c.GetInt64("githubId")) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "disableNetworkPolicy requires admin privileges"})
@@ -386,11 +403,7 @@ func (h *AppHandler) Update(c *gin.Context) {
 
 	updated.GitHub.InstallationID = installID
 
-	// Preserve hash (server-managed, set by CI)
-	proj, ok := projectFromCtx(c)
-	if !ok {
-		return
-	}
+	// Preserve hash (server-managed, set by CI) from the already-loaded project.
 	for _, existing := range proj.Applications {
 		if existing.Name == appName {
 			updated.GitHub.Hash = existing.GitHub.Hash
