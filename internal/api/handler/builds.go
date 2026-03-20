@@ -116,7 +116,13 @@ func (h *BuildsHandler) streamWS(c *gin.Context, project, workflowName string, f
 	ctx := c.Request.Context()
 	rc, err := h.wf.StreamWorkflowLogs(ctx, project, workflowName, follow)
 	if err != nil {
-		msg, _ := json.Marshal(map[string]string{"error": err.Error()})
+		var payload map[string]string
+		if strings.Contains(err.Error(), "build initializing") {
+			payload = map[string]string{"error": err.Error(), "code": "initializing"}
+		} else {
+			payload = map[string]string{"error": err.Error()}
+		}
+		msg, _ := json.Marshal(payload)
 		_ = conn.WriteMessage(websocket.TextMessage, msg)
 		return
 	}

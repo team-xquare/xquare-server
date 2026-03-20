@@ -303,7 +303,7 @@ func (c *Client) AddonReady(ctx context.Context, project, addonName, addonType s
 type ErrAppNotDeployed struct{ App string }
 
 func (e *ErrAppNotDeployed) Error() string {
-	return fmt.Sprintf("app %q has not been deployed yet — run: xquare deploy %s", e.App, e.App)
+	return fmt.Sprintf("app %q has not been deployed yet — run: xquare trigger %s", e.App, e.App)
 }
 
 // ErrPodStartTimeout is returned when a pod fails to become ready within the wait window.
