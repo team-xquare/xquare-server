@@ -208,7 +208,7 @@ func (h *ProjectHandler) AddMember(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"added": user.ID})
+	c.JSON(http.StatusOK, gin.H{"added": user.ID, "username": user.Login})
 }
 
 // DELETE /projects/:project/members/:username
