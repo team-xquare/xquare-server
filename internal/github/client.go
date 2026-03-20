@@ -413,4 +413,3 @@ func (c *Client) buildInstallURL(ctx context.Context, owner string) string {
 	return fmt.Sprintf("https://github.com/apps/%s/installations/new/permissions?target_id=%d",
 		c.appSlug, user.ID)
 }
-

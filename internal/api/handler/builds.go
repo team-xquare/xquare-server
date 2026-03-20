@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bufio"
+	"encoding/json"
 	"net/http"
 	"regexp"
 	"strings"
@@ -111,7 +112,8 @@ func (h *BuildsHandler) streamWS(c *gin.Context, project, workflowName string, f
 	ctx := c.Request.Context()
 	rc, err := h.wf.StreamWorkflowLogs(ctx, project, workflowName, follow)
 	if err != nil {
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"build log stream unavailable"}`))
+		msg, _ := json.Marshal(map[string]string{"error": err.Error()})
+		_ = conn.WriteMessage(websocket.TextMessage, msg)
 		return
 	}
 	defer rc.Close()

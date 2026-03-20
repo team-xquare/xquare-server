@@ -192,6 +192,41 @@ func K8sSecretName(project, app string) string {
 	return project + "-" + app
 }
 
+// BuildType returns the active build type key (e.g. "gradle", "nodejs", "docker").
+// Returns "" if no build type is set.
+func (b Build) BuildType() string {
+	switch {
+	case b.Gradle != nil:
+		return "gradle"
+	case b.NodeJS != nil:
+		return "nodejs"
+	case b.React != nil:
+		return "react"
+	case b.Vite != nil:
+		return "vite"
+	case b.Vue != nil:
+		return "vue"
+	case b.NextJS != nil:
+		return "nextjs"
+	case b.NextJSExport != nil:
+		return "nextjs-export"
+	case b.Go != nil:
+		return "go"
+	case b.Rust != nil:
+		return "rust"
+	case b.Maven != nil:
+		return "maven"
+	case b.Django != nil:
+		return "django"
+	case b.Flask != nil:
+		return "flask"
+	case b.Docker != nil:
+		return "docker"
+	default:
+		return ""
+	}
+}
+
 // ValidBuildCommand returns an error if the command contains shell injection patterns.
 // Build commands run inside CI containers, but we still block obvious exfiltration
 // attempts (command substitution, null bytes).
