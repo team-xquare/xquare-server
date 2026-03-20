@@ -247,6 +247,40 @@ func (c *Client) GetProject(name string) (*domain.Project, error) {
 	return c.readProject(name)
 }
 
+// ListProjectsWithAccess returns project names accessible to the given GitHub user ID.
+// Admins receive all project names without a per-project read.
+// Non-admins get all projects read in a single mutex lock to avoid N+1 mutex contention.
+func (c *Client) ListProjectsWithAccess(githubID int64, isAdmin bool) ([]string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, err := c.ensureRepo(); err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(filepath.Join(c.repoDir, "projects"))
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name(), ".yaml")
+		if isAdmin {
+			names = append(names, name)
+			continue
+		}
+		p, err := c.readProject(name)
+		if err != nil {
+			continue // skip unreadable projects
+		}
+		if p.HasAccess(githubID) {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
+
 const maxProjectFileBytes = 1 * 1024 * 1024 // 1 MiB
 
 func (c *Client) readProject(name string) (*domain.Project, error) {
