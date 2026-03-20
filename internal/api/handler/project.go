@@ -47,29 +47,18 @@ func (h *ProjectHandler) isAdmin(githubID int64) bool {
 // GET /projects — only shows projects the user owns (admins see all)
 func (h *ProjectHandler) List(c *gin.Context) {
 	githubID := c.GetInt64("githubId")
-	all, err := h.gitops.ListProjects()
+	isAdmin := h.isAdmin(githubID)
+	// ListProjectsWithAccess reads all project files in a single mutex lock,
+	// avoiding the N+1 mutex contention of the old ListProjects + N*GetProject pattern.
+	projects, err := h.gitops.ListProjectsWithAccess(githubID, isAdmin)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	if h.isAdmin(githubID) {
-		c.JSON(http.StatusOK, gin.H{"projects": all})
-		return
+	if projects == nil {
+		projects = []string{}
 	}
-	var accessible []string
-	for _, name := range all {
-		p, err := h.gitops.GetProject(name)
-		if err != nil {
-			continue
-		}
-		if p.HasAccess(githubID) {
-			accessible = append(accessible, name)
-		}
-	}
-	if accessible == nil {
-		accessible = []string{}
-	}
-	c.JSON(http.StatusOK, gin.H{"projects": accessible})
+	c.JSON(http.StatusOK, gin.H{"projects": projects})
 }
 
 // GET /projects/:project
