@@ -106,7 +106,28 @@ func (h *AppHandler) List(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"applications": proj.Applications})
+	// Augment each application with a top-level buildType field for easy consumption
+	// by CLI and MCP tools without requiring clients to inspect the nested build object.
+	type appSummary struct {
+		Name                 string `json:"name"`
+		BuildType            string `json:"buildType,omitempty"`
+		DisableNetworkPolicy bool   `json:"disableNetworkPolicy,omitempty"`
+		GitHub               any    `json:"github"`
+		Build                any    `json:"build"`
+		Endpoints            any    `json:"endpoints,omitempty"`
+	}
+	summaries := make([]appSummary, 0, len(proj.Applications))
+	for _, a := range proj.Applications {
+		summaries = append(summaries, appSummary{
+			Name:                 a.Name,
+			BuildType:            a.Build.BuildType(),
+			DisableNetworkPolicy: a.DisableNetworkPolicy,
+			GitHub:               a.GitHub,
+			Build:                a.Build,
+			Endpoints:            a.Endpoints,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"applications": summaries})
 }
 
 // GET /projects/:project/apps/:app
@@ -151,11 +172,16 @@ func (h *AppHandler) Status(c *gin.Context) {
 		}
 	}
 
-	// Compute deployPhase for UI clarity
+	// Compute deployPhase for UI clarity.
+	// When the K8s deployment exists, reflect the actual runtime status directly
+	// so clients can distinguish running/failed/pending/stopped without a second
+	// status field. Only fall back to build-phase values when not yet deployed.
 	deployPhase := "not_deployed"
-	if status.Status == "running" || status.Status == "failed" || status.Status == "pending" || status.Status == "stopped" {
-		deployPhase = "deployed"
-	} else if lastBuild != nil {
+	switch status.Status {
+	case "running", "failed", "pending", "stopped":
+		deployPhase = status.Status
+	}
+	if deployPhase == "not_deployed" && lastBuild != nil {
 		switch lastBuild.Status {
 		case "running", "pending":
 			deployPhase = "building"
