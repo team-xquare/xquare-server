@@ -613,7 +613,7 @@ func (h *AppHandler) Trigger(c *gin.Context) {
 		return
 	}
 
-	// Rate limit: 1 redeploy per app per 60 seconds to prevent Workflow flooding
+	// Rate limit: 1 redeploy per app per 30 seconds to prevent Workflow flooding
 	limiterKey := project + "/" + app
 	if ok, wait := h.limiter.allow(limiterKey); !ok {
 		c.JSON(http.StatusTooManyRequests, gin.H{
