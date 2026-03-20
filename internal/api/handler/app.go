@@ -206,7 +206,7 @@ func (h *AppHandler) Status(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"name":        status.Name,
 		"status":      status.Status,
 		"deployPhase": deployPhase,
@@ -215,7 +215,11 @@ func (h *AppHandler) Status(c *gin.Context) {
 		"version":     status.Version,
 		"instances":   status.Instances,
 		"lastBuild":   lastBuild,
-	})
+	}
+	if status.Message != "" {
+		resp["message"] = status.Message
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // POST /projects/:project/apps
