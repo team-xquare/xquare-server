@@ -512,7 +512,10 @@ func validateBuildSpec(b domain.Build) error {
 		if val == "" {
 			return nil
 		}
-		return domain.ValidFilePath(val)
+		// Build output paths (jarOutputPath, distPath, dockerfilePath, contextPath) are
+		// container-internal paths where absolute paths are normal (e.g. /build/libs/*.jar).
+		// Use ValidBuildPath which only blocks traversal and null bytes, not absolute paths.
+		return domain.ValidBuildPath(val)
 	}
 	if b.Gradle != nil {
 		if err := check("buildCommand", b.Gradle.BuildCommand); err != nil {
