@@ -162,6 +162,10 @@ func (h *AddonHandler) Update(c *gin.Context) {
 	}
 
 	if err := h.gitops.UpdateAddon(project, addonName, req.Buckets, c.GetString("username")); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -175,6 +179,10 @@ func (h *AddonHandler) Delete(c *gin.Context) {
 	addonName := c.Param("addon")
 
 	if err := h.gitops.DeleteAddon(project, addonName, c.GetString("username")); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

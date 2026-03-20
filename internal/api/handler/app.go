@@ -357,6 +357,10 @@ func (h *AppHandler) Update(c *gin.Context) {
 	}
 
 	if err := h.gitops.UpdateApplication(project, updated, c.GetString("username")); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -369,6 +373,10 @@ func (h *AppHandler) Delete(c *gin.Context) {
 	app := c.Param("app")
 
 	if err := h.gitops.DeleteApplication(project, app, c.GetString("username")); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
