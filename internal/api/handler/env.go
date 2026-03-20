@@ -80,9 +80,8 @@ func (h *EnvHandler) Set(c *gin.Context) {
 
 // PATCH /projects/:project/apps/:app/env
 // Partial update — merges with existing keys.
-// The 1 MiB total size cap is enforced INSIDE vault.PatchEnv (under its mutex)
-// to prevent a TOCTOU race where two concurrent PATCHes both pass a pre-check
-// but their combined writes exceed the limit.
+// The 1 MiB total size cap is enforced atomically inside vault.PatchEnv (under its mutex)
+// to prevent TOCTOU races. No pre-check is done here to avoid a redundant read.
 func (h *EnvHandler) Patch(c *gin.Context) {
 	project := c.Param("project")
 	app := c.Param("app")
@@ -98,24 +97,6 @@ func (h *EnvHandler) Patch(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-	}
-
-	// Read current state and check total size after merge before writing
-	current, err := h.vault.GetEnv(project, app)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	merged := make(map[string]string, len(current)+len(patch))
-	for k, v := range current {
-		merged[k] = v
-	}
-	for k, v := range patch {
-		merged[k] = v
-	}
-	if totalEnvSize(merged) > maxEnvTotalBytes {
-		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "env vars exceed 1 MiB total size limit after merge"})
-		return
 	}
 
 	if err := h.vault.PatchEnv(project, app, patch); err != nil {

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -19,11 +20,23 @@ import (
 
 const apiBase = "https://api.github.com"
 
+// userCacheEntry holds a cached User with an expiry timestamp.
+type userCacheEntry struct {
+	user    *User
+	expires time.Time
+}
+
+// Client is a GitHub API client with an in-memory TTL cache for user lookups.
 type Client struct {
 	appID      string
 	appSlug    string
 	privateKey *rsa.PrivateKey
 	httpClient *http.Client
+
+	// userCache caches GetUserByID responses to reduce GitHub rate limit usage.
+	// Keyed by numeric user ID. TTL: 5 minutes.
+	userCacheMu sync.Mutex
+	userCache   map[int64]userCacheEntry
 }
 
 func NewClient(cfg *config.GitHubConfig) *Client {
@@ -31,6 +44,7 @@ func NewClient(cfg *config.GitHubConfig) *Client {
 		appID:      cfg.AppID,
 		appSlug:    cfg.AppSlug,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
+		userCache:  make(map[int64]userCacheEntry),
 	}
 	if cfg.PrivateKey != "" {
 		if key, err := parseRSAKey(cfg.PrivateKey); err == nil {
@@ -137,8 +151,19 @@ func (c *Client) GetUser(ctx context.Context, accessToken string) (*User, error)
 }
 
 // GetUserByID fetches public GitHub user info by numeric ID.
+// Results are cached in memory for 5 minutes to reduce GitHub API rate limit usage.
 // GitHub resolves numeric path segments to user IDs (usernames are never purely numeric).
 func (c *Client) GetUserByID(ctx context.Context, id int64) (*User, error) {
+	const cacheTTL = 5 * time.Minute
+
+	// Check cache first (lock-free read with expiry check)
+	c.userCacheMu.Lock()
+	if entry, ok := c.userCache[id]; ok && time.Now().Before(entry.expires) {
+		c.userCacheMu.Unlock()
+		return entry.user, nil
+	}
+	c.userCacheMu.Unlock()
+
 	req, _ := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/user/%d", apiBase, id), nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := c.httpClient.Do(req)
@@ -156,6 +181,12 @@ func (c *Client) GetUserByID(ctx context.Context, id int64) (*User, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
 		return nil, err
 	}
+
+	// Cache the result
+	c.userCacheMu.Lock()
+	c.userCache[id] = userCacheEntry{user: &user, expires: time.Now().Add(cacheTTL)}
+	c.userCacheMu.Unlock()
+
 	return &user, nil
 }
 
