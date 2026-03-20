@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -147,6 +148,10 @@ func (h *EnvHandler) DeleteKey(c *gin.Context) {
 	}
 
 	if err := h.vault.DeleteEnvKey(project, app, key); err != nil {
+		if errors.Is(err, vault.ErrEnvKeyNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("env key %q not found", key)})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete environment variable"})
 		return
 	}

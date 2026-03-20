@@ -201,7 +201,7 @@ func (wc *WorkflowClient) StreamWorkflowLogs(ctx context.Context, project, workf
 	}
 
 	if len(pods.Items) == 0 {
-		return nil, fmt.Errorf("no pods found for workflow %s", workflowName)
+		return nil, fmt.Errorf("build initializing — no pods found yet for workflow %s", workflowName)
 	}
 
 	// Sort pods by creation time

@@ -111,6 +111,7 @@ func (c *Client) PatchEnv(project, app string, vars map[string]string) error {
 }
 
 // DeleteEnvKey removes a single key from Vault KV v1.
+// Returns ErrEnvKeyNotFound if the key does not exist.
 // Uses a mutex to prevent TOCTOU race conditions on concurrent DELETE requests.
 func (c *Client) DeleteEnvKey(project, app, key string) error {
 	c.mu.Lock()
@@ -120,9 +121,15 @@ func (c *Client) DeleteEnvKey(project, app, key string) error {
 	if err != nil {
 		return err
 	}
+	if _, ok := existing[key]; !ok {
+		return ErrEnvKeyNotFound
+	}
 	delete(existing, key)
 	return c.setEnvLocked(project, app, existing)
 }
+
+// ErrEnvKeyNotFound is returned when the requested env key does not exist.
+var ErrEnvKeyNotFound = errors.New("env key not found")
 
 // InitEnv creates an empty secret at the Vault path (needed before VaultStaticSecret syncs)
 func (c *Client) InitEnv(project, app string) error {
