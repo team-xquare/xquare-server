@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +26,7 @@ func NewBuildsHandler(wf *k8s.WorkflowClient) *BuildsHandler {
 }
 
 // GET /projects/:project/apps/:app/builds
+// Optional query param: ?limit=N (1-50, default 50)
 func (h *BuildsHandler) List(c *gin.Context) {
 	if h.wf == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "build logs unavailable: workflow client not initialized"})
@@ -42,6 +44,14 @@ func (h *BuildsHandler) List(c *gin.Context) {
 	if workflows == nil {
 		workflows = []k8s.WorkflowInfo{}
 	}
+
+	// Apply optional server-side limit — callers can request fewer items to reduce response size.
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 && n < len(workflows) {
+			workflows = workflows[:n]
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"builds": workflows})
 }
 
