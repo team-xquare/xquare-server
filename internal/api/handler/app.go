@@ -500,8 +500,12 @@ func validateEndpoints(endpoints []domain.Endpoint) error {
 	return nil
 }
 
-// validateBuildSpec checks all build command fields for shell injection patterns.
+// validateBuildSpec checks that exactly one build type is set and that all build
+// command fields are free of shell injection patterns.
 func validateBuildSpec(b domain.Build) error {
+	if err := b.ValidBuildType(); err != nil {
+		return err
+	}
 	check := func(label, val string) error {
 		if val == "" {
 			return nil

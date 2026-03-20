@@ -227,6 +227,63 @@ func (b Build) BuildType() string {
 	}
 }
 
+// buildTypeCount returns the number of non-nil build type fields set in b.
+func (b Build) buildTypeCount() int {
+	n := 0
+	if b.Gradle != nil {
+		n++
+	}
+	if b.NodeJS != nil {
+		n++
+	}
+	if b.React != nil {
+		n++
+	}
+	if b.Vite != nil {
+		n++
+	}
+	if b.Vue != nil {
+		n++
+	}
+	if b.NextJS != nil {
+		n++
+	}
+	if b.NextJSExport != nil {
+		n++
+	}
+	if b.Go != nil {
+		n++
+	}
+	if b.Rust != nil {
+		n++
+	}
+	if b.Maven != nil {
+		n++
+	}
+	if b.Django != nil {
+		n++
+	}
+	if b.Flask != nil {
+		n++
+	}
+	if b.Docker != nil {
+		n++
+	}
+	return n
+}
+
+// ValidBuildType returns an error if the build spec has no build type or has more than one.
+func (b Build) ValidBuildType() error {
+	n := b.buildTypeCount()
+	if n == 0 {
+		return fmt.Errorf("build spec must specify exactly one build type (gradle, nodejs, react, vite, vue, nextjs, nextjs-export, go, rust, maven, django, flask, docker)")
+	}
+	if n > 1 {
+		return fmt.Errorf("build spec must specify exactly one build type, but %d were provided", n)
+	}
+	return nil
+}
+
 // ValidBuildCommand returns an error if the command contains shell injection patterns.
 // Build commands run inside CI containers, but we still block obvious exfiltration
 // attempts (command substitution, null bytes).
