@@ -383,6 +383,13 @@ func (c *Client) AddApplication(project string, app domain.Application, actor st
 				return fmt.Errorf("application %q already exists in project %q", app.Name, project)
 			}
 		}
+		// Prevent name collision with existing addons: both create K8s Service
+		// objects in the same namespace under the same name.
+		for _, a := range p.Addons {
+			if a.Name == app.Name {
+				return fmt.Errorf("application name %q conflicts with existing addon of the same name", app.Name)
+			}
+		}
 		p.Applications = append(p.Applications, app)
 		return nil
 	}, fmt.Sprintf("feat: add application %s to %s [actor: %s]", app.Name, project, sanitizeCommitToken(actor)))
@@ -428,6 +435,14 @@ func (c *Client) AddAddon(project string, addon domain.Addon, actor string) erro
 		for _, a := range p.Addons {
 			if a.Name == addon.Name {
 				return fmt.Errorf("addon %q already exists", addon.Name)
+			}
+		}
+		// Prevent name collision with existing apps: both addons and apps create
+		// K8s Service objects in the same namespace, so sharing a name would cause
+		// the services to conflict (last-write wins in ArgoCD sync).
+		for _, app := range p.Applications {
+			if app.Name == addon.Name {
+				return fmt.Errorf("addon name %q conflicts with existing app of the same name", addon.Name)
 			}
 		}
 		p.Addons = append(p.Addons, addon)
