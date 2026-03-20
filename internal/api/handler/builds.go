@@ -38,6 +38,10 @@ func (h *BuildsHandler) List(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	// Guarantee a JSON array (never null) so clients can safely iterate.
+	if workflows == nil {
+		workflows = []k8s.WorkflowInfo{}
+	}
 	c.JSON(http.StatusOK, gin.H{"builds": workflows})
 }
 
