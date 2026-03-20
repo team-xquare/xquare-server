@@ -134,10 +134,17 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 		instances = append(instances, inst)
 	}
 
+	// dep.Spec.Replicas is a pointer — it's nil when the field is unset (e.g.
+	// the deployment was just created and the defaulter hasn't run yet).
+	var desired int32
+	if dep.Spec.Replicas != nil {
+		desired = *dep.Spec.Replicas
+	}
+
 	return &AppStatus{
 		Name:      app,
 		Status:    status,
-		Scale:     Scale{Desired: *dep.Spec.Replicas, Running: dep.Status.ReadyReplicas},
+		Scale:     Scale{Desired: desired, Running: dep.Status.ReadyReplicas},
 		Version:   hash,
 		Instances: instances,
 	}, nil
@@ -147,7 +154,9 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 // If the pod exists but is not yet running, it polls until the container is ready
 // (up to 3 minutes) before opening the log stream — so callers never see a raw
 // Kubernetes "container is waiting" error.
-func (c *Client) StreamPodLogs(ctx context.Context, project, app string, tailLines int64, follow bool) (io.ReadCloser, error) {
+// since is an optional duration string (e.g. "1h", "30m") that limits log output
+// to lines produced within that window; an empty string means "all available".
+func (c *Client) StreamPodLogs(ctx context.Context, project, app string, tailLines int64, follow bool, since string) (io.ReadCloser, error) {
 	ns := domain.Namespace(project)
 
 	const pollInterval = 2 * time.Second
@@ -219,11 +228,22 @@ func (c *Client) StreamPodLogs(ctx context.Context, project, app string, tailLin
 			}
 		}
 
-		req := c.cs.CoreV1().Pods(ns).GetLogs(target.Name, &corev1.PodLogOptions{
+		logOpts := &corev1.PodLogOptions{
 			Container: containerName,
 			TailLines: &tailLines,
 			Follow:    follow,
-		})
+		}
+		if since != "" {
+			if d, err := time.ParseDuration(since); err == nil && d > 0 {
+				secs := int64(d.Seconds())
+				logOpts.SinceSeconds = &secs
+				// When SinceSeconds is set, TailLines is not used by K8s — clear it
+				// so callers who expect "last N lines within the window" don't get
+				// surprised by an empty response when the window is large.
+				logOpts.TailLines = nil
+			}
+		}
+		req := c.cs.CoreV1().Pods(ns).GetLogs(target.Name, logOpts)
 		rc, err := req.Stream(ctx)
 		if err != nil {
 			// The container may have just transitioned to Waiting between our

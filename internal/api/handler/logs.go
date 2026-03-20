@@ -55,16 +55,17 @@ func (h *LogsHandler) Stream(c *gin.Context) {
 		tailLines = 1
 	}
 	follow := c.Query("follow") != "false"
+	since := c.Query("since")
 
 	if websocket.IsWebSocketUpgrade(c.Request) {
-		h.streamWS(c, project, app, tailLines, follow)
+		h.streamWS(c, project, app, tailLines, follow, since)
 		return
 	}
-	h.streamHTTP(c, project, app, tailLines, follow)
+	h.streamHTTP(c, project, app, tailLines, follow, since)
 }
 
-func (h *LogsHandler) streamHTTP(c *gin.Context, project, app string, tailLines int64, follow bool) {
-	rc, err := h.k8s.StreamPodLogs(c.Request.Context(), project, app, tailLines, follow)
+func (h *LogsHandler) streamHTTP(c *gin.Context, project, app string, tailLines int64, follow bool, since string) {
+	rc, err := h.k8s.StreamPodLogs(c.Request.Context(), project, app, tailLines, follow, since)
 	if err != nil {
 		var notDeployed *k8s.ErrAppNotDeployed
 		if errors.As(err, &notDeployed) {
@@ -100,7 +101,7 @@ func (h *LogsHandler) streamHTTP(c *gin.Context, project, app string, tailLines 
 	}
 }
 
-func (h *LogsHandler) streamWS(c *gin.Context, project, app string, tailLines int64, follow bool) {
+func (h *LogsHandler) streamWS(c *gin.Context, project, app string, tailLines int64, follow bool, since string) {
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
@@ -108,7 +109,7 @@ func (h *LogsHandler) streamWS(c *gin.Context, project, app string, tailLines in
 	defer conn.Close()
 
 	ctx := c.Request.Context()
-	rc, err := h.k8s.StreamPodLogs(ctx, project, app, tailLines, follow)
+	rc, err := h.k8s.StreamPodLogs(ctx, project, app, tailLines, follow, since)
 	if err != nil {
 		var notDeployed *k8s.ErrAppNotDeployed
 		var timeout *k8s.ErrPodStartTimeout

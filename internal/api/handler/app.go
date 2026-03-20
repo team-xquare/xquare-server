@@ -373,8 +373,11 @@ func (h *AppHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	// Clean up Vault secrets
-	_ = h.vault.DeleteEnv(project, app)
+	// Clean up Vault secrets — log failures but do not fail the request;
+	// the GitOps record is already removed so the app is effectively deleted.
+	if err := h.vault.DeleteEnv(project, app); err != nil {
+		log.Printf("warn: vault.DeleteEnv %s/%s: %v", project, app, err)
+	}
 
 	c.Status(http.StatusNoContent)
 }
