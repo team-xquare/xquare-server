@@ -244,10 +244,25 @@ func ValidBuildCommand(cmd string) error {
 }
 
 // ValidFilePath returns an error if the path is absolute or contains path traversal.
+// Use this for paths that must be relative (e.g. CI trigger paths in the git repo).
 func ValidFilePath(path string) error {
 	if strings.HasPrefix(path, "/") {
 		return fmt.Errorf("path must be relative, not absolute")
 	}
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("path must not contain path traversal (..)")
+	}
+	if strings.ContainsRune(path, 0) {
+		return fmt.Errorf("path must not contain null bytes")
+	}
+	return nil
+}
+
+// ValidBuildPath returns an error if the path contains path traversal or null bytes.
+// Unlike ValidFilePath, absolute paths are allowed because build output paths
+// (jarOutputPath, distPath, dockerfilePath) are container-internal paths — e.g.
+// /build/libs/*.jar, /dist, ./Dockerfile — where absolute paths are normal and expected.
+func ValidBuildPath(path string) error {
 	if strings.Contains(path, "..") {
 		return fmt.Errorf("path must not contain path traversal (..)")
 	}
