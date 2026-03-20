@@ -78,9 +78,29 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// Enrich applications with top-level buildType, consistent with GET /apps and GET /apps/:app.
+	type appSummary struct {
+		Name                 string `json:"name"`
+		BuildType            string `json:"buildType,omitempty"`
+		DisableNetworkPolicy bool   `json:"disableNetworkPolicy,omitempty"`
+		GitHub               any    `json:"github"`
+		Build                any    `json:"build"`
+		Endpoints            any    `json:"endpoints,omitempty"`
+	}
+	summaries := make([]appSummary, 0, len(p.Applications))
+	for _, a := range p.Applications {
+		summaries = append(summaries, appSummary{
+			Name:                 a.Name,
+			BuildType:            a.Build.BuildType(),
+			DisableNetworkPolicy: a.DisableNetworkPolicy,
+			GitHub:               a.GitHub,
+			Build:                a.Build,
+			Endpoints:            a.Endpoints,
+		})
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"owners":       resolveUsernames(c, h.github, p.Owners),
-		"applications": p.Applications,
+		"applications": summaries,
 		"addons":       p.Addons,
 	})
 }
