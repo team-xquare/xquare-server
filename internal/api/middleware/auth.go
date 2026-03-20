@@ -52,6 +52,9 @@ func Auth(secret string) gin.HandlerFunc {
 		}
 		c.Set("githubId", claims.GithubID)
 		c.Set("username", claims.Username)
+		if claims.ExpiresAt != nil {
+			c.Set("tokenExpiresAt", claims.ExpiresAt.Time.UTC().Format("2006-01-02T15:04:05Z"))
+		}
 		c.Next()
 	}
 }

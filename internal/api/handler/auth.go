@@ -86,10 +86,14 @@ func (h *AuthHandler) GitHubCallback(c *gin.Context) {
 
 // GET /auth/me
 func (h *AuthHandler) Me(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"github_id": c.GetInt64("githubId"),
 		"username":  c.GetString("username"),
-	})
+	}
+	if exp := c.GetString("tokenExpiresAt"); exp != "" {
+		resp["expires_at"] = exp
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *AuthHandler) issueJWT(githubID int64, username string) (string, error) {
