@@ -168,6 +168,25 @@ func (h *AppHandler) Status(c *gin.Context) {
 	project := c.Param("project")
 	app := c.Param("app")
 
+	// Verify the app exists in the project before making K8s API calls.
+	// Without this check, a typo in the app name silently returns {"status":"not_deployed"}
+	// instead of a 404, which is misleading for users and AI agents alike.
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
+	appExists := false
+	for _, a := range proj.Applications {
+		if a.Name == app {
+			appExists = true
+			break
+		}
+	}
+	if !appExists {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("app %q not found in project %q", app, project)})
+		return
+	}
+
 	status, err := h.k8s.GetAppStatus(c.Request.Context(), project, app)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": friendlyK8sError(err)})

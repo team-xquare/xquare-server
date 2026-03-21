@@ -101,6 +101,10 @@ func (h *AddonHandler) Create(c *gin.Context) {
 		return
 	}
 
+	if addon.Storage == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "storage is required (e.g. 2Gi, 500Mi)"})
+		return
+	}
 	storageBytes, err := parseStorageBytes(addon.Storage)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

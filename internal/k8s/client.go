@@ -86,7 +86,7 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 	dep, err := c.cs.AppsV1().Deployments(ns).Get(ctx, app, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return &AppStatus{Name: app, Status: "not_deployed"}, nil
+			return &AppStatus{Name: app, Status: "not_deployed", Instances: []InstanceInfo{}}, nil
 		}
 		return nil, fmt.Errorf("get deployment: %w", err)
 	}
@@ -126,7 +126,7 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 	pods, _ := c.cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", app),
 	})
-	var instances []InstanceInfo
+	instances := make([]InstanceInfo, 0, len(pods.Items))
 	for _, pod := range pods.Items {
 		ready := false
 		var restarts int32
