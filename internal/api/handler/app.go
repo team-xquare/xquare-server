@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -116,8 +117,11 @@ func (h *AppHandler) List(c *gin.Context) {
 		Build                any    `json:"build"`
 		Endpoints            any    `json:"endpoints,omitempty"`
 	}
-	summaries := make([]appSummary, 0, len(proj.Applications))
-	for _, a := range proj.Applications {
+	apps := make([]domain.Application, len(proj.Applications))
+	copy(apps, proj.Applications)
+	sort.Slice(apps, func(i, j int) bool { return apps[i].Name < apps[j].Name })
+	summaries := make([]appSummary, 0, len(apps))
+	for _, a := range apps {
 		summaries = append(summaries, appSummary{
 			Name:                 a.Name,
 			BuildType:            a.Build.BuildType(),
