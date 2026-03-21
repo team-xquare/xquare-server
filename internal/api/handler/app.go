@@ -122,13 +122,20 @@ func (h *AppHandler) List(c *gin.Context) {
 	sort.Slice(apps, func(i, j int) bool { return apps[i].Name < apps[j].Name })
 	summaries := make([]appSummary, 0, len(apps))
 	for _, a := range apps {
+		// Endpoints: pass nil (not a typed nil slice) so that json:",omitempty" works.
+		// A typed nil []Endpoint assigned to `any` becomes a non-nil interface, which
+		// serializes as "endpoints":null instead of being omitted.
+		var endpts any
+		if len(a.Endpoints) > 0 {
+			endpts = a.Endpoints
+		}
 		summaries = append(summaries, appSummary{
 			Name:                 a.Name,
 			BuildType:            a.Build.BuildType(),
 			DisableNetworkPolicy: a.DisableNetworkPolicy,
 			GitHub:               a.GitHub,
 			Build:                a.Build,
-			Endpoints:            a.Endpoints,
+			Endpoints:            endpts,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"applications": summaries})
@@ -152,13 +159,17 @@ func (h *AppHandler) Get(c *gin.Context) {
 				Build                any    `json:"build"`
 				Endpoints            any    `json:"endpoints,omitempty"`
 			}
+			var endpts any
+			if len(a.Endpoints) > 0 {
+				endpts = a.Endpoints
+			}
 			c.JSON(http.StatusOK, appDetail{
 				Name:                 a.Name,
 				BuildType:            a.Build.BuildType(),
 				DisableNetworkPolicy: a.DisableNetworkPolicy,
 				GitHub:               a.GitHub,
 				Build:                a.Build,
-				Endpoints:            a.Endpoints,
+				Endpoints:            endpts,
 			})
 			return
 		}
@@ -492,17 +503,13 @@ func (h *AppHandler) Tunnel(c *gin.Context) {
 	project := c.Param("project")
 	appName := c.Param("app")
 
-	password, err := h.k8s.GetAccessServerPassword(c.Request.Context(), project)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get access credentials"})
-		return
-	}
-
+	// Check app existence before making the K8s password call to return a clear 404
+	// rather than wasting a K8s API call when the app name is wrong.
 	proj, ok := projectFromCtx(c)
 	if !ok {
 		return
 	}
-	var ports []int
+	ports := []int{} // always an array, never null
 	found := false
 	for _, a := range proj.Applications {
 		if a.Name == appName {
@@ -515,6 +522,12 @@ func (h *AppHandler) Tunnel(c *gin.Context) {
 	}
 	if !found {
 		c.JSON(http.StatusNotFound, gin.H{"error": "app not found"})
+		return
+	}
+
+	password, err := h.k8s.GetAccessServerPassword(c.Request.Context(), project)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get access credentials"})
 		return
 	}
 

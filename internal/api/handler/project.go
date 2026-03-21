@@ -105,13 +105,17 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 	sort.Slice(sortedApps, func(i, j int) bool { return sortedApps[i].Name < sortedApps[j].Name })
 	summaries := make([]appSummary, 0, len(sortedApps))
 	for _, a := range sortedApps {
+		var endpts any
+		if len(a.Endpoints) > 0 {
+			endpts = a.Endpoints
+		}
 		summaries = append(summaries, appSummary{
 			Name:                 a.Name,
 			BuildType:            a.Build.BuildType(),
 			DisableNetworkPolicy: a.DisableNetworkPolicy,
 			GitHub:               a.GitHub,
 			Build:                a.Build,
-			Endpoints:            a.Endpoints,
+			Endpoints:            endpts,
 		})
 	}
 	// Enrich addons with live ready status in parallel (same as GET /projects/:project/addons).
