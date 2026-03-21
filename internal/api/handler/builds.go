@@ -27,7 +27,7 @@ func NewBuildsHandler(wf *k8s.WorkflowClient) *BuildsHandler {
 }
 
 // GET /projects/:project/apps/:app/builds
-// Optional query param: ?limit=N (1-50, default 50)
+// Optional query params: ?limit=N (1-50, default 50), ?status=running|success|failed|pending
 func (h *BuildsHandler) List(c *gin.Context) {
 	if h.wf == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "build logs unavailable: workflow client not initialized"})
@@ -63,6 +63,19 @@ func (h *BuildsHandler) List(c *gin.Context) {
 	// Guarantee a JSON array (never null) so clients can safely iterate.
 	if workflows == nil {
 		workflows = []k8s.WorkflowInfo{}
+	}
+
+	// Apply optional status filter — e.g. ?status=running shows only in-progress builds.
+	// Valid values: running, success, failed, pending. Unknown values return an empty list
+	// rather than an error to avoid breaking callers on future status additions.
+	if statusFilter := c.Query("status"); statusFilter != "" {
+		filtered := workflows[:0]
+		for _, w := range workflows {
+			if w.Status == statusFilter {
+				filtered = append(filtered, w)
+			}
+		}
+		workflows = filtered
 	}
 
 	// Apply optional server-side limit — callers can request fewer items to reduce response size.
