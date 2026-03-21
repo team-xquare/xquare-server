@@ -281,6 +281,47 @@ func (c *Client) ListProjectsWithAccess(githubID int64, isAdmin bool) ([]string,
 	return names, nil
 }
 
+// ProjectSummary holds lightweight per-project counts, computed from YAML without K8s/GitHub calls.
+type ProjectSummary struct {
+	Name       string
+	AppCount   int
+	AddonCount int
+}
+
+// ListProjectSummariesWithAccess returns ProjectSummary for each accessible project.
+// All YAML reads happen inside a single mutex lock — O(N) but no K8s or GitHub calls.
+func (c *Client) ListProjectSummariesWithAccess(githubID int64, isAdmin bool) ([]ProjectSummary, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, err := c.ensureRepo(); err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(filepath.Join(c.repoDir, "projects"))
+	if err != nil {
+		return nil, err
+	}
+	var summaries []ProjectSummary
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name(), ".yaml")
+		p, err := c.readProject(name)
+		if err != nil {
+			continue
+		}
+		if !isAdmin && !p.HasAccess(githubID) {
+			continue
+		}
+		summaries = append(summaries, ProjectSummary{
+			Name:       name,
+			AppCount:   len(p.Applications),
+			AddonCount: len(p.Addons),
+		})
+	}
+	return summaries, nil
+}
+
 const maxProjectFileBytes = 1 * 1024 * 1024 // 1 MiB
 
 func (c *Client) readProject(name string) (*domain.Project, error) {
