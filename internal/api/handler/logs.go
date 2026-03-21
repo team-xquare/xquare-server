@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -56,6 +58,18 @@ func (h *LogsHandler) Stream(c *gin.Context) {
 	}
 	follow := c.Query("follow") != "false"
 	since := c.Query("since")
+
+	// Validate ?since= — must be a valid Go duration (e.g. "1h", "30m", "10s").
+	// Silently ignoring invalid values would confuse users who typo the duration
+	// and get all logs instead of the expected time-windowed subset.
+	if since != "" {
+		if d, err := time.ParseDuration(since); err != nil || d <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("invalid ?since=%q: must be a valid Go duration (e.g. 1h, 30m, 10s)", since),
+			})
+			return
+		}
+	}
 
 	if websocket.IsWebSocketUpgrade(c.Request) {
 		h.streamWS(c, project, app, tailLines, follow, since)

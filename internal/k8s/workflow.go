@@ -44,10 +44,11 @@ type WorkflowClient struct {
 
 // WorkflowInfo represents a CI build
 type WorkflowInfo struct {
-	ID        string `json:"id"`
-	Status    string `json:"status"` // pending, running, success, failed
-	StartedAt string `json:"startedAt,omitempty"`
-	Message   string `json:"message,omitempty"`
+	ID         string `json:"id"`
+	Status     string `json:"status"` // pending, running, success, failed
+	StartedAt  string `json:"startedAt,omitempty"`
+	FinishedAt string `json:"finishedAt,omitempty"`
+	Message    string `json:"message,omitempty"`
 }
 
 func NewWorkflowClient(cfg *config.K8sConfig, k8sClient *Client) (*WorkflowClient, error) {
@@ -141,6 +142,7 @@ func (wc *WorkflowClient) ListWorkflows(ctx context.Context, project, app string
 		id := item.GetName()
 		status := "unknown"
 		startedAt := ""
+		finishedAt := ""
 		message := ""
 
 		if wfStatus, ok := item.Object["status"].(map[string]any); ok {
@@ -161,16 +163,20 @@ func (wc *WorkflowClient) ListWorkflows(ctx context.Context, project, app string
 			if s, ok := wfStatus["startedAt"].(string); ok {
 				startedAt = s
 			}
+			if f, ok := wfStatus["finishedAt"].(string); ok {
+				finishedAt = f
+			}
 			if m, ok := wfStatus["message"].(string); ok {
 				message = m
 			}
 		}
 
 		workflows = append(workflows, WorkflowInfo{
-			ID:        id,
-			Status:    status,
-			StartedAt: startedAt,
-			Message:   message,
+			ID:         id,
+			Status:     status,
+			StartedAt:  startedAt,
+			FinishedAt: finishedAt,
+			Message:    message,
 		})
 	}
 
