@@ -144,6 +144,7 @@ func (h *AppHandler) List(c *gin.Context) {
 // GET /projects/:project/apps/:app
 func (h *AppHandler) Get(c *gin.Context) {
 	app := c.Param("app")
+	project := c.Param("project")
 	proj, ok := projectFromCtx(c)
 	if !ok {
 		return
@@ -174,7 +175,7 @@ func (h *AppHandler) Get(c *gin.Context) {
 			return
 		}
 	}
-	c.JSON(http.StatusNotFound, gin.H{"error": "app not found"})
+	c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("app %q not found in project %q", app, project)})
 }
 
 // GET /projects/:project/apps/:app/status
