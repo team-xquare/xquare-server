@@ -95,6 +95,17 @@ func (h *BuildsHandler) StreamLogs(c *gin.Context) {
 	workflowName := c.Param("workflow")
 	follow := c.Query("follow") != "false"
 
+	// Parse optional ?tail=N (default 500, max 2000)
+	tailLines := int64(500)
+	if tailStr := c.Query("tail"); tailStr != "" {
+		if n, err := strconv.ParseInt(tailStr, 10, 64); err == nil && n > 0 {
+			if n > 2000 {
+				n = 2000
+			}
+			tailLines = n
+		}
+	}
+
 	// Validate workflow name to prevent K8s label selector injection.
 	// "latest" is the only special value allowed before resolution.
 	if workflowName != "latest" && (len(workflowName) > 253 || !workflowNameRe.MatchString(workflowName)) {
@@ -114,14 +125,14 @@ func (h *BuildsHandler) StreamLogs(c *gin.Context) {
 	}
 
 	if websocket.IsWebSocketUpgrade(c.Request) {
-		h.streamWS(c, project, workflowName, follow)
+		h.streamWS(c, project, workflowName, follow, tailLines)
 		return
 	}
-	h.streamHTTP(c, project, workflowName, follow)
+	h.streamHTTP(c, project, workflowName, follow, tailLines)
 }
 
-func (h *BuildsHandler) streamHTTP(c *gin.Context, project, workflowName string, follow bool) {
-	rc, err := h.wf.StreamWorkflowLogs(c.Request.Context(), project, workflowName, follow)
+func (h *BuildsHandler) streamHTTP(c *gin.Context, project, workflowName string, follow bool, tailLines int64) {
+	rc, err := h.wf.StreamWorkflowLogs(c.Request.Context(), project, workflowName, follow, tailLines)
 	if err != nil {
 		if strings.Contains(err.Error(), "build initializing") {
 			c.JSON(http.StatusAccepted, gin.H{"status": "initializing", "message": err.Error()})
@@ -149,7 +160,7 @@ func (h *BuildsHandler) streamHTTP(c *gin.Context, project, workflowName string,
 	}
 }
 
-func (h *BuildsHandler) streamWS(c *gin.Context, project, workflowName string, follow bool) {
+func (h *BuildsHandler) streamWS(c *gin.Context, project, workflowName string, follow bool, tailLines int64) {
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
@@ -157,7 +168,7 @@ func (h *BuildsHandler) streamWS(c *gin.Context, project, workflowName string, f
 	defer conn.Close()
 
 	ctx := c.Request.Context()
-	rc, err := h.wf.StreamWorkflowLogs(ctx, project, workflowName, follow)
+	rc, err := h.wf.StreamWorkflowLogs(ctx, project, workflowName, follow, tailLines)
 	if err != nil {
 		var payload map[string]string
 		if strings.Contains(err.Error(), "build initializing") {
@@ -172,6 +183,7 @@ func (h *BuildsHandler) streamWS(c *gin.Context, project, workflowName string, f
 	defer rc.Close()
 
 	scanner := bufio.NewScanner(rc)
+	scanner.Buffer(make([]byte, 512*1024), 512*1024) // prevent silent truncation of long Docker build lines
 	for scanner.Scan() {
 		select {
 		case <-ctx.Done():
