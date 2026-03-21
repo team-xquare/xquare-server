@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
@@ -69,15 +70,18 @@ func (h *AddonHandler) List(c *gin.Context) {
 		Ready   bool   `json:"ready"`
 	}
 
-	items := make([]addonItem, 0, len(addons))
-	for _, a := range addons {
-		items = append(items, addonItem{
-			Name:    a.Name,
-			Type:    a.Type,
-			Storage: a.Storage,
-			Ready:   h.k8s.AddonReady(c.Request.Context(), project, a.Name, a.Type),
-		})
+	// Fetch AddonReady status for all addons in parallel to avoid O(N) sequential K8s calls.
+	items := make([]addonItem, len(addons))
+	var wg sync.WaitGroup
+	for i, a := range addons {
+		items[i] = addonItem{Name: a.Name, Type: a.Type, Storage: a.Storage}
+		wg.Add(1)
+		go func(i int, a domain.Addon) {
+			defer wg.Done()
+			items[i].Ready = h.k8s.AddonReady(c.Request.Context(), project, a.Name, a.Type)
+		}(i, a)
 	}
+	wg.Wait()
 	c.JSON(http.StatusOK, gin.H{"addons": items})
 }
 
