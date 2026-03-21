@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -77,8 +78,11 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 		Build                any    `json:"build"`
 		Endpoints            any    `json:"endpoints,omitempty"`
 	}
-	summaries := make([]appSummary, 0, len(p.Applications))
-	for _, a := range p.Applications {
+	sortedApps := make([]domain.Application, len(p.Applications))
+	copy(sortedApps, p.Applications)
+	sort.Slice(sortedApps, func(i, j int) bool { return sortedApps[i].Name < sortedApps[j].Name })
+	summaries := make([]appSummary, 0, len(sortedApps))
+	for _, a := range sortedApps {
 		summaries = append(summaries, appSummary{
 			Name:                 a.Name,
 			BuildType:            a.Build.BuildType(),
