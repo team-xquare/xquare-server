@@ -237,7 +237,11 @@ func (h *AppHandler) Status(c *gin.Context) {
 		"scale":       status.Scale,
 		"version":     status.Version,
 		"instances":   status.Instances,
-		"lastBuild":   lastBuild,
+	}
+	// Omit lastBuild entirely when nil — a null field confuses clients
+	// that expect the field to either be a build object or absent.
+	if lastBuild != nil {
+		resp["lastBuild"] = lastBuild
 	}
 	if status.Message != "" {
 		resp["message"] = status.Message
