@@ -248,6 +248,11 @@ func (h *AppHandler) Create(c *gin.Context) {
 		return
 	}
 
+	if err := domain.ValidGitHubSpec(app.GitHub); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	if err := domain.ValidTriggerPaths(app.GitHub.TriggerPaths); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -354,6 +359,11 @@ func (h *AppHandler) Update(c *gin.Context) {
 	}
 
 	if err := validateBuildSpec(updated.Build); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := domain.ValidGitHubSpec(updated.GitHub); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

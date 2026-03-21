@@ -367,6 +367,22 @@ func ValidEnvKey(key string) error {
 	return nil
 }
 
+// ValidGitHubSpec returns an error if any required GitHub field is missing.
+// owner, repo, and branch must be non-empty; this is checked before any external
+// GitHub API call to provide a clear 400 error instead of a confusing upstream error.
+func ValidGitHubSpec(gh GitHub) error {
+	if gh.Owner == "" {
+		return fmt.Errorf("github.owner is required")
+	}
+	if gh.Repo == "" {
+		return fmt.Errorf("github.repo is required")
+	}
+	if gh.Branch == "" {
+		return fmt.Errorf("github.branch is required")
+	}
+	return nil
+}
+
 // ValidTriggerPaths validates the triggerPaths array on a GitHub app config.
 // Each path must be a valid relative file path (no null bytes, no traversal).
 const maxTriggerPaths = 20
