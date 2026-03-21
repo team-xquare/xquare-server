@@ -3,6 +3,7 @@ package handler
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -34,6 +35,25 @@ func (h *BuildsHandler) List(c *gin.Context) {
 	}
 	project := c.Param("project")
 	app := c.Param("app")
+
+	// Verify the app exists in the project before querying Argo Workflows.
+	// Without this check, a typo in the app name silently returns {"builds":[]}
+	// instead of a 404, which is misleading for users and AI agents alike.
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
+	appExists := false
+	for _, a := range proj.Applications {
+		if a.Name == app {
+			appExists = true
+			break
+		}
+	}
+	if !appExists {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("app %q not found in project %q", app, project)})
+		return
+	}
 
 	workflows, err := h.wf.ListWorkflows(c.Request.Context(), project, app)
 	if err != nil {
