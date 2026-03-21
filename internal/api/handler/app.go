@@ -704,11 +704,17 @@ func (h *AppHandler) Trigger(c *gin.Context) {
 		return
 	}
 	sha := ""
+	appFound := false
 	for _, a := range proj.Applications {
 		if a.Name == app {
+			appFound = true
 			sha, _ = h.github.GetBranchSHA(c.Request.Context(), a.GitHub.Owner, a.GitHub.Repo, a.GitHub.Branch)
 			break
 		}
+	}
+	if !appFound {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("app %q not found in project %q", app, project)})
+		return
 	}
 
 	name, err := h.wf.TriggerCI(c.Request.Context(), project, app, sha)

@@ -147,6 +147,7 @@ func (h *LogsHandler) streamWS(c *gin.Context, project, app string, tailLines in
 	defer rc.Close()
 
 	scanner := bufio.NewScanner(rc)
+	scanner.Buffer(make([]byte, 512*1024), 512*1024) // prevent silent truncation of long log lines
 	for scanner.Scan() {
 		select {
 		case <-ctx.Done():

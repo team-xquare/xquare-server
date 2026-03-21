@@ -75,11 +75,13 @@ func (h *AddonHandler) List(c *gin.Context) {
 	var wg sync.WaitGroup
 	for i, a := range addons {
 		items[i] = addonItem{Name: a.Name, Type: a.Type, Storage: a.Storage}
-		wg.Add(1)
-		go func(i int, a domain.Addon) {
-			defer wg.Done()
-			items[i].Ready = h.k8s.AddonReady(c.Request.Context(), project, a.Name, a.Type)
-		}(i, a)
+		if h.k8s != nil {
+			wg.Add(1)
+			go func(i int, a domain.Addon) {
+				defer wg.Done()
+				items[i].Ready = h.k8s.AddonReady(c.Request.Context(), project, a.Name, a.Type)
+			}(i, a)
+		}
 	}
 	wg.Wait()
 	c.JSON(http.StatusOK, gin.H{"addons": items})
