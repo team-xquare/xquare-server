@@ -299,7 +299,11 @@ func (c *Client) GetAccessServerPassword(ctx context.Context, project string) (s
 	if err != nil {
 		return "", fmt.Errorf("get access-server-password: %w", err)
 	}
-	return string(data["password"]), nil
+	pw, ok := data["password"]
+	if !ok {
+		return "", fmt.Errorf("access-server-password secret missing 'password' key")
+	}
+	return string(pw), nil
 }
 
 // AddonReady returns true if the addon's StatefulSet exists and has at least one ready replica.
