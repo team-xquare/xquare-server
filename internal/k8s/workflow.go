@@ -194,8 +194,9 @@ func (wc *WorkflowClient) ListWorkflows(ctx context.Context, project, app string
 	return workflows, nil
 }
 
-// StreamWorkflowLogs streams logs from the pods of a workflow (all steps, in order)
-func (wc *WorkflowClient) StreamWorkflowLogs(ctx context.Context, project, workflowName string, follow bool) (io.ReadCloser, error) {
+// StreamWorkflowLogs streams logs from the pods of a workflow (all steps, in order).
+// tailLines controls how many lines from the end to return (0 means use default of 500).
+func (wc *WorkflowClient) StreamWorkflowLogs(ctx context.Context, project, workflowName string, follow bool, tailLines int64) (io.ReadCloser, error) {
 	ns := domain.Namespace(project)
 
 	// Find pods labeled with this workflow
@@ -252,7 +253,9 @@ func (wc *WorkflowClient) StreamWorkflowLogs(ctx context.Context, project, workf
 		return nil, fmt.Errorf("build initializing (pod pending) — wait 15-30s and retry")
 	}
 
-	tailLines := int64(500)
+	if tailLines <= 0 {
+		tailLines = 500
+	}
 	req := wc.cs.cs.CoreV1().Pods(ns).GetLogs(target.Name, &corev1.PodLogOptions{
 		Container: container,
 		TailLines: &tailLines,
