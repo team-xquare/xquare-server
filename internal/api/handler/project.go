@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
@@ -92,26 +93,26 @@ func (h *ProjectHandler) Get(c *gin.Context) {
 			Endpoints:            a.Endpoints,
 		})
 	}
-	// Enrich addons with live ready status, consistent with GET /projects/:project/addons.
+	// Enrich addons with live ready status in parallel (same as GET /projects/:project/addons).
 	type addonSummary struct {
 		Name    string `json:"name"`
 		Type    string `json:"type"`
 		Storage string `json:"storage"`
 		Ready   bool   `json:"ready"`
 	}
-	addonItems := make([]addonSummary, 0, len(p.Addons))
-	for _, a := range p.Addons {
-		ready := false
+	addonItems := make([]addonSummary, len(p.Addons))
+	var addonWg sync.WaitGroup
+	for i, a := range p.Addons {
+		addonItems[i] = addonSummary{Name: a.Name, Type: a.Type, Storage: a.Storage}
 		if h.k8s != nil {
-			ready = h.k8s.AddonReady(c.Request.Context(), project, a.Name, a.Type)
+			addonWg.Add(1)
+			go func(i int, a domain.Addon) {
+				defer addonWg.Done()
+				addonItems[i].Ready = h.k8s.AddonReady(c.Request.Context(), project, a.Name, a.Type)
+			}(i, a)
 		}
-		addonItems = append(addonItems, addonSummary{
-			Name:    a.Name,
-			Type:    a.Type,
-			Storage: a.Storage,
-			Ready:   ready,
-		})
 	}
+	addonWg.Wait()
 	c.JSON(http.StatusOK, gin.H{
 		"owners":       resolveUsernames(c, h.github, p.Owners),
 		"applications": summaries,
@@ -261,18 +262,14 @@ func (h *ProjectHandler) Dashboard(c *gin.Context) {
 	dashURL := fmt.Sprintf("https://%s-observability-dashboard.dsmhs.kr", project)
 
 	data, err := h.k8s.GetSecret(c.Request.Context(), ns, "grafana-admin-password")
-	if err != nil {
-		// Secret not ready yet (project just created) — return URL only
-		c.JSON(http.StatusOK, gin.H{
-			"url":      dashURL,
-			"username": "admin",
-			"password": nil,
-		})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"url":      dashURL,
 		"username": "admin",
-		"password": string(data["password"]),
-	})
+	}
+	if err == nil {
+		// Omit password entirely when the secret is not ready yet (project just created),
+		// rather than returning "password": null which surprises JSON clients.
+		resp["password"] = string(data["password"])
+	}
+	c.JSON(http.StatusOK, resp)
 }
