@@ -293,8 +293,10 @@ func (h *ProjectHandler) Dashboard(c *gin.Context) {
 	}
 	if err == nil {
 		// Omit password entirely when the secret is not ready yet (project just created),
-		// rather than returning "password": null which surprises JSON clients.
-		resp["password"] = string(data["password"])
+		// rather than returning "password": "" which surprises JSON clients.
+		if pw := string(data["password"]); pw != "" {
+			resp["password"] = pw
+		}
 	}
 	c.JSON(http.StatusOK, resp)
 }
