@@ -47,9 +47,30 @@ func (h *ProjectHandler) isAdmin(githubID int64) bool {
 }
 
 // GET /projects — only shows projects the user owns (admins see all)
+// ?include=counts adds appCount/addonCount per project without K8s/GitHub calls.
 func (h *ProjectHandler) List(c *gin.Context) {
 	githubID := c.GetInt64("githubId")
 	isAdmin := h.isAdmin(githubID)
+
+	if c.Query("include") == "counts" {
+		summaries, err := h.gitops.ListProjectSummariesWithAccess(githubID, isAdmin)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		type projectCount struct {
+			Name       string `json:"name"`
+			AppCount   int    `json:"appCount"`
+			AddonCount int    `json:"addonCount"`
+		}
+		items := make([]projectCount, 0, len(summaries))
+		for _, s := range summaries {
+			items = append(items, projectCount{Name: s.Name, AppCount: s.AppCount, AddonCount: s.AddonCount})
+		}
+		c.JSON(http.StatusOK, gin.H{"projects": items})
+		return
+	}
+
 	// ListProjectsWithAccess reads all project files in a single mutex lock,
 	// avoiding the N+1 mutex contention of the old ListProjects + N*GetProject pattern.
 	projects, err := h.gitops.ListProjectsWithAccess(githubID, isAdmin)
