@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,7 @@ import (
 func AppAccess() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		appName := c.Param("app")
+		project := c.Param("project")
 		proj, exists := c.Get("project")
 		if !exists {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "project context missing"})
@@ -30,6 +32,6 @@ func AppAccess() gin.HandlerFunc {
 				return
 			}
 		}
-		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "app not found"})
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("app %q not found in project %q", appName, project)})
 	}
 }
