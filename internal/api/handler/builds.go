@@ -92,8 +92,27 @@ func (h *BuildsHandler) List(c *gin.Context) {
 // Also supports WebSocket upgrade
 func (h *BuildsHandler) StreamLogs(c *gin.Context) {
 	project := c.Param("project")
+	app := c.Param("app")
 	workflowName := c.Param("workflow")
 	follow := c.Query("follow") != "false"
+
+	// Verify the app exists before resolving "latest" or streaming.
+	// Without this check, an unknown app name returns "no builds found" instead of 404.
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
+	appExists := false
+	for _, a := range proj.Applications {
+		if a.Name == app {
+			appExists = true
+			break
+		}
+	}
+	if !appExists {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("app %q not found in project %q", app, project)})
+		return
+	}
 
 	// Parse optional ?tail=N (default 500, max 2000)
 	tailLines := int64(500)
@@ -115,7 +134,6 @@ func (h *BuildsHandler) StreamLogs(c *gin.Context) {
 
 	// resolve "latest" to actual workflow name
 	if workflowName == "latest" {
-		app := c.Param("app")
 		wfs, err := h.wf.ListWorkflows(c.Request.Context(), project, app)
 		if err != nil || len(wfs) == 0 {
 			c.JSON(http.StatusNotFound, gin.H{"error": "no builds found"})
