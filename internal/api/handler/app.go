@@ -777,3 +777,48 @@ func (h *AppHandler) Trigger(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"build": name})
 }
+
+// PATCH /projects/:project/apps/:app/scale
+// Sets replica count: 0 to stop the app, 1-10 to start/resize.
+func (h *AppHandler) Scale(c *gin.Context) {
+	project := c.Param("project")
+	app := c.Param("app")
+
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
+	appExists := false
+	for _, a := range proj.Applications {
+		if a.Name == app {
+			appExists = true
+			break
+		}
+	}
+	if !appExists {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("app %q not found in project %q", app, project)})
+		return
+	}
+
+	var req struct {
+		Replicas int32 `json:"replicas"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Replicas < 0 || req.Replicas > 10 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "replicas must be 0-10"})
+		return
+	}
+
+	if err := h.k8s.ScaleApp(c.Request.Context(), project, app, req.Replicas); err != nil {
+		if strings.Contains(err.Error(), "not been deployed yet") {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": friendlyK8sError(err)})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"app": app, "replicas": req.Replicas})
+}

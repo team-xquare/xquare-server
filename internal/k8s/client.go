@@ -349,6 +349,24 @@ func (e *ErrPodStartTimeout) Error() string {
 	return fmt.Sprintf("app %q did not start within 3 minutes", e.App)
 }
 
+// ScaleApp sets the replica count for an app's Deployment.
+// replicas=0 stops the app; replicas>0 starts it.
+func (c *Client) ScaleApp(ctx context.Context, project, app string, replicas int32) error {
+	ns := domain.Namespace(project)
+	scale, err := c.cs.AppsV1().Deployments(ns).GetScale(ctx, app, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return fmt.Errorf("app %q has not been deployed yet — push to GitHub to trigger a build first", app)
+		}
+		return fmt.Errorf("get scale: %w", err)
+	}
+	scale.Spec.Replicas = replicas
+	if _, err := c.cs.AppsV1().Deployments(ns).UpdateScale(ctx, app, scale, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("update scale: %w", err)
+	}
+	return nil
+}
+
 // DeleteNamespace deletes the K8s namespace for a project (cascades all resources).
 func (c *Client) DeleteNamespace(ctx context.Context, project string) error {
 	ns := domain.Namespace(project)
