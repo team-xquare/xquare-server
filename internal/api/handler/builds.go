@@ -88,7 +88,7 @@ func (h *BuildsHandler) List(c *gin.Context) {
 	// rather than silently returning all results.
 	if limitStr := c.Query("limit"); limitStr != "" {
 		n, err := strconv.Atoi(limitStr)
-		if err != nil || n < 1 {
+		if err != nil || n < 1 || n > 50 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid limit %q: must be a positive integer (1-50)", limitStr)})
 			return
 		}
