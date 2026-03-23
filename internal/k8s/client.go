@@ -122,12 +122,18 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 		}
 	}
 
-	// Get instances (pods)
+	// Get instances (pods). Discard the error — a transient API failure should
+	// not prevent returning deployment status; instances will just be empty.
+	// Guard against nil to avoid a panic on pods.Items when List fails.
 	pods, _ := c.cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", app),
 	})
-	instances := make([]InstanceInfo, 0, len(pods.Items))
-	for _, pod := range pods.Items {
+	var podItems []corev1.Pod
+	if pods != nil {
+		podItems = pods.Items
+	}
+	instances := make([]InstanceInfo, 0, len(podItems))
+	for _, pod := range podItems {
 		ready := false
 		var restarts int32
 		var reason string
