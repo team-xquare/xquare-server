@@ -84,8 +84,15 @@ func (h *BuildsHandler) List(c *gin.Context) {
 	}
 
 	// Apply optional server-side limit — callers can request fewer items to reduce response size.
+	// Return 400 for non-numeric values so typos (e.g. ?limit=all) surface immediately
+	// rather than silently returning all results.
 	if limitStr := c.Query("limit"); limitStr != "" {
-		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 && n < len(workflows) {
+		n, err := strconv.Atoi(limitStr)
+		if err != nil || n < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid limit %q: must be a positive integer (1-50)", limitStr)})
+			return
+		}
+		if n < len(workflows) {
 			workflows = workflows[:n]
 		}
 	}
