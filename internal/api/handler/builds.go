@@ -66,9 +66,14 @@ func (h *BuildsHandler) List(c *gin.Context) {
 	}
 
 	// Apply optional status filter — e.g. ?status=running shows only in-progress builds.
-	// Valid values: running, success, failed, pending. Unknown values return an empty list
-	// rather than an error to avoid breaking callers on future status additions.
+	// Returns 400 for unknown values so typos (e.g. ?status=faled) surface immediately
+	// rather than silently returning an empty list.
 	if statusFilter := c.Query("status"); statusFilter != "" {
+		validStatuses := map[string]bool{"running": true, "success": true, "failed": true, "pending": true}
+		if !validStatuses[statusFilter] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid status %q: must be one of running, success, failed, pending", statusFilter)})
+			return
+		}
 		filtered := workflows[:0]
 		for _, w := range workflows {
 			if w.Status == statusFilter {
