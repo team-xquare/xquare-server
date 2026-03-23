@@ -388,11 +388,17 @@ func (c *Client) RemoveProjectMember(project string, githubID int64, actor strin
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.retryUpdate(project, func(p *domain.Project) error {
-		owners := p.Owners[:0]
+		found := false
+		owners := make([]int64, 0, len(p.Owners))
 		for _, id := range p.Owners {
-			if id != githubID {
-				owners = append(owners, id)
+			if id == githubID {
+				found = true
+				continue
 			}
+			owners = append(owners, id)
+		}
+		if !found {
+			return fmt.Errorf("user id=%d is not a member of project %q", githubID, project)
 		}
 		p.Owners = owners
 		return nil
