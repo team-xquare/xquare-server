@@ -203,24 +203,50 @@ func (h *AppHandler) Status(c *gin.Context) {
 		return
 	}
 
-	status, err := h.k8s.GetAppStatus(c.Request.Context(), project, app)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": friendlyK8sError(err)})
+	// Fan-out: run all three independent K8s lookups in parallel to halve latency.
+	type statusResult struct {
+		status *k8s.AppStatus
+		err    error
+	}
+	type ciReadyResult struct{ ready bool }
+	type lastBuildResult struct{ build *k8s.WorkflowInfo }
+
+	statusCh := make(chan statusResult, 1)
+	ciReadyCh := make(chan ciReadyResult, 1)
+	lastBuildCh := make(chan lastBuildResult, 1)
+
+	ctx := c.Request.Context()
+	go func() {
+		s, err := h.k8s.GetAppStatus(ctx, project, app)
+		statusCh <- statusResult{s, err}
+	}()
+	go func() {
+		if h.wf != nil {
+			ciReadyCh <- ciReadyResult{h.wf.WorkflowTemplateExists(ctx, project, app)}
+		} else {
+			ciReadyCh <- ciReadyResult{false}
+		}
+	}()
+	go func() {
+		if h.wf != nil {
+			if wfs, err := h.wf.ListWorkflows(ctx, project, app); err == nil && len(wfs) > 0 {
+				lastBuildCh <- lastBuildResult{&wfs[0]}
+				return
+			}
+		}
+		lastBuildCh <- lastBuildResult{nil}
+	}()
+
+	sr := <-statusCh
+	if sr.err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": friendlyK8sError(sr.err)})
 		return
 	}
-
-	// Enrich: CI pipeline readiness
-	ciReady := false
-	if h.wf != nil {
-		ciReady = h.wf.WorkflowTemplateExists(c.Request.Context(), project, app)
-	}
-
-	// Enrich: latest build status so clients can show deployPhase
+	status := sr.status
+	ciReady := (<-ciReadyCh).ready
 	var lastBuild *k8s.WorkflowInfo
-	if h.wf != nil {
-		if wfs, err := h.wf.ListWorkflows(c.Request.Context(), project, app); err == nil && len(wfs) > 0 {
-			lastBuild = &wfs[0]
-		}
+	if lb := (<-lastBuildCh).build; lb != nil {
+		lastBuild = lb
 	}
 
 	// Compute deployPhase for UI clarity.
