@@ -107,7 +107,7 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 	if dep.Spec.Replicas != nil {
 		desiredReplicas = *dep.Spec.Replicas
 	}
-	if dep.Status.ReadyReplicas == dep.Status.Replicas && dep.Status.Replicas > 0 {
+	if dep.Status.ReadyReplicas >= desiredReplicas && desiredReplicas > 0 {
 		status = "running"
 	} else if desiredReplicas == 0 {
 		// Intentionally scaled to zero (user requested 0 replicas)
