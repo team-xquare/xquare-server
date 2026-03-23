@@ -767,7 +767,7 @@ func (h *AppHandler) Trigger(c *gin.Context) {
 			c.JSON(http.StatusServiceUnavailable, gin.H{
 				"error":   ciNotReady.Error(),
 				"code":    "ci_not_ready",
-				"retryIn": 30,
+				"retryIn": 120,
 			})
 			return
 		}

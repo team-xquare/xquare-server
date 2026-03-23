@@ -173,7 +173,7 @@ func main() {
 					app.DELETE("", appH.Delete)
 					app.GET("/status", appH.Status)
 					app.POST("/trigger", triggerRL, appH.Trigger)
-				app.PATCH("/scale", appH.Scale)
+					app.PATCH("/scale", appH.Scale)
 					app.GET("/logs", logsH.Stream)
 					app.GET("/builds", buildsH.List)
 					app.GET("/builds/:workflow/logs", buildsH.StreamLogs)
