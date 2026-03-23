@@ -275,7 +275,7 @@ func (h *AddonHandler) Connection(c *gin.Context) {
 			AccessKey string `json:"accessKey"`
 			SecretKey string `json:"secretKey"`
 		}
-		var creds []bucketCreds
+		creds := make([]bucketCreds, 0, len(addon.Buckets))
 		for _, b := range addon.Buckets {
 			creds = append(creds, bucketCreds{
 				Name:      b.Name,
