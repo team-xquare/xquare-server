@@ -724,18 +724,10 @@ func (h *AppHandler) Trigger(c *gin.Context) {
 		return
 	}
 
-	// Rate limit: 1 redeploy per app per 30 seconds to prevent Workflow flooding
-	limiterKey := project + "/" + app
-	if ok, wait := h.limiter.allow(limiterKey); !ok {
-		c.JSON(http.StatusTooManyRequests, gin.H{
-			"error":   fmt.Sprintf("redeploy rate limit exceeded — wait %ds before retrying", int(wait.Seconds())),
-			"retryIn": int(wait.Seconds()),
-		})
-		return
-	}
-
 	// Resolve current SHA from GitHub so the workflow template takes the fast path
 	// (github-event-type=push) and skips the sh process-substitution JWT code.
+	// App existence check must come before the rate limiter so that invalid app
+	// names don't consume rate limit budget.
 	proj, ok := projectFromCtx(c)
 	if !ok {
 		return
@@ -751,6 +743,16 @@ func (h *AppHandler) Trigger(c *gin.Context) {
 	}
 	if !appFound {
 		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("app %q not found in project %q", app, project)})
+		return
+	}
+
+	// Rate limit: 1 redeploy per app per 30 seconds to prevent Workflow flooding
+	limiterKey := project + "/" + app
+	if ok, wait := h.limiter.allow(limiterKey); !ok {
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error":   fmt.Sprintf("redeploy rate limit exceeded — wait %ds before retrying", int(wait.Seconds())),
+			"retryIn": int(wait.Seconds()),
+		})
 		return
 	}
 
