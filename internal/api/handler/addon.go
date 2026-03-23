@@ -21,6 +21,10 @@ const maxBootstrapBytes = 32 * 1024            // 32 KiB
 
 var storageRe = regexp.MustCompile(`^(\d+)(Ki|Mi|Gi|Ti|Pi|E|P|T|G|M|K)$`)
 
+// bucketNameRe validates S3 bucket names: lowercase letters, numbers, hyphens (2-63 chars).
+// Matches the resource name regex used elsewhere in this package.
+var bucketNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$`)
+
 func parseStorageBytes(s string) (int64, error) {
 	m := storageRe.FindStringSubmatch(s)
 	if m == nil {
@@ -126,6 +130,13 @@ func (h *AddonHandler) Create(c *gin.Context) {
 		return
 	}
 
+	for _, b := range addon.Buckets {
+		if !bucketNameRe.MatchString(b.Name) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid bucket name %q: must be lowercase letters, numbers, and hyphens (2-63 chars)", b.Name)})
+			return
+		}
+	}
+
 	if len(addon.Bootstrap) > maxBootstrapBytes {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("bootstrap must be less than %d bytes", maxBootstrapBytes)})
 		return
@@ -175,6 +186,13 @@ func (h *AddonHandler) Update(c *gin.Context) {
 	if addon.Type != "seaweedfs" && len(req.Buckets) > 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "buckets are only supported for seaweedfs addons"})
 		return
+	}
+
+	for _, b := range req.Buckets {
+		if !bucketNameRe.MatchString(b.Name) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid bucket name %q: must be lowercase letters, numbers, and hyphens (2-63 chars)", b.Name)})
+			return
+		}
 	}
 
 	if err := h.gitops.UpdateAddon(project, addonName, req.Buckets, c.GetString("username")); err != nil {

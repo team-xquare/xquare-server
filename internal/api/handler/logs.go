@@ -47,7 +47,7 @@ func (h *LogsHandler) Stream(c *gin.Context) {
 	tailLines := int64(100)
 	if t := c.Query("tail"); t != "" {
 		n, err := strconv.ParseInt(t, 10, 64)
-		if err != nil {
+		if err != nil || n < 1 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid ?tail=%q: must be a positive integer (1-%d)", t, maxTailLines)})
 			return
 		}
@@ -55,9 +55,6 @@ func (h *LogsHandler) Stream(c *gin.Context) {
 	}
 	if tailLines > maxTailLines {
 		tailLines = maxTailLines
-	}
-	if tailLines < 1 {
-		tailLines = 1
 	}
 	follow := c.Query("follow") != "false"
 	since := c.Query("since")

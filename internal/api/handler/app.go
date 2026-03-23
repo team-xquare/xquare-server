@@ -263,7 +263,17 @@ func (h *AppHandler) Status(c *gin.Context) {
 		case "running", "pending":
 			deployPhase = "building"
 		case "success":
-			deployPhase = "syncing" // build done, waiting for ArgoCD
+			// Only show "syncing" when the build just completed (ArgoCD typically syncs within ~5 min).
+			// After 15 minutes, if the app is still not_deployed, the sync likely stalled or failed —
+			// showing "syncing" indefinitely misleads users and AI agents into thinking deploy is in progress.
+			if lastBuild.FinishedAt != "" {
+				if t, err := time.Parse(time.RFC3339, lastBuild.FinishedAt); err == nil && time.Since(t) < 15*time.Minute {
+					deployPhase = "syncing"
+				}
+				// else: keep deployPhase as "not_deployed" — sync window expired
+			} else {
+				deployPhase = "syncing" // no finishedAt yet, assume build just completed
+			}
 		}
 	}
 
