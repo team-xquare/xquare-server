@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/team-xquare/xquare-server/internal/github"
@@ -62,7 +63,11 @@ func (h *AllowlistHandler) Add(c *gin.Context) {
 		return
 	}
 	if err := h.gitops.AddAllowedUser(c.GetString("username"), ghUser.ID); err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		if strings.Contains(err.Error(), "already") {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"id": ghUser.ID, "username": ghUser.Login})
@@ -82,7 +87,11 @@ func (h *AllowlistHandler) Remove(c *gin.Context) {
 		return
 	}
 	if err := h.gitops.RemoveAllowedUser(c.GetString("username"), ghUser.ID); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
 		return
 	}
 	c.Status(http.StatusNoContent)
