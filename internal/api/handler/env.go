@@ -31,10 +31,30 @@ func NewEnvHandler(v *vault.Client) *EnvHandler {
 	return &EnvHandler{vault: v}
 }
 
+// appExistsInCtx checks that the app exists in the project loaded by middleware.
+// Returns false and writes 404 if not found.
+func appExistsInCtx(c *gin.Context, project, app string) bool {
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return false
+	}
+	for _, a := range proj.Applications {
+		if a.Name == app {
+			return true
+		}
+	}
+	c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("app %q not found in project %q", app, project)})
+	return false
+}
+
 // GET /projects/:project/apps/:app/env
 func (h *EnvHandler) Get(c *gin.Context) {
 	project := c.Param("project")
 	app := c.Param("app")
+
+	if !appExistsInCtx(c, project, app) {
+		return
+	}
 
 	envs, err := h.vault.GetEnv(project, app)
 	if err != nil {
@@ -49,6 +69,10 @@ func (h *EnvHandler) Get(c *gin.Context) {
 func (h *EnvHandler) Set(c *gin.Context) {
 	project := c.Param("project")
 	app := c.Param("app")
+
+	if !appExistsInCtx(c, project, app) {
+		return
+	}
 
 	var envs map[string]string
 	if err := c.ShouldBindJSON(&envs); err != nil {
@@ -86,6 +110,10 @@ func (h *EnvHandler) Patch(c *gin.Context) {
 	project := c.Param("project")
 	app := c.Param("app")
 
+	if !appExistsInCtx(c, project, app) {
+		return
+	}
+
 	var patch map[string]string
 	if err := c.ShouldBindJSON(&patch); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -122,6 +150,10 @@ func (h *EnvHandler) DeleteKey(c *gin.Context) {
 	project := c.Param("project")
 	app := c.Param("app")
 	key := c.Param("key")
+
+	if !appExistsInCtx(c, project, app) {
+		return
+	}
 
 	if err := domain.ValidEnvKey(key); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

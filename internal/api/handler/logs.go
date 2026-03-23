@@ -44,6 +44,24 @@ func (h *LogsHandler) Stream(c *gin.Context) {
 	project := c.Param("project")
 	app := c.Param("app")
 
+	// Verify the app exists in the project before attempting K8s log stream.
+	// Without this check, an unknown app name returns "app not deployed" instead of 404.
+	proj, ok := projectFromCtx(c)
+	if !ok {
+		return
+	}
+	appExists := false
+	for _, a := range proj.Applications {
+		if a.Name == app {
+			appExists = true
+			break
+		}
+	}
+	if !appExists {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("app %q not found in project %q", app, project)})
+		return
+	}
+
 	tailLines := int64(100)
 	if t := c.Query("tail"); t != "" {
 		n, err := strconv.ParseInt(t, 10, 64)
