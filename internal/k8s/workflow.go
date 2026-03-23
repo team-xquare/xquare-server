@@ -180,9 +180,20 @@ func (wc *WorkflowClient) ListWorkflows(ctx context.Context, project, app string
 		})
 	}
 
-	// sort newest first
+	// sort newest first; Pending workflows have empty startedAt — treat them as
+	// newer than any completed build so that a just-triggered build appears first.
 	sort.Slice(workflows, func(i, j int) bool {
-		return workflows[i].StartedAt > workflows[j].StartedAt
+		si, sj := workflows[i].StartedAt, workflows[j].StartedAt
+		if si == sj {
+			return false
+		}
+		if si == "" {
+			return true // pending (no startedAt) sorts before any completed build
+		}
+		if sj == "" {
+			return false
+		}
+		return si > sj
 	})
 
 	// cap to 50 most recent to prevent unbounded response size
