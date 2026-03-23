@@ -113,8 +113,17 @@ func (c *Client) GetAppStatus(ctx context.Context, project, app string) (*AppSta
 		// Intentionally scaled to zero (user requested 0 replicas)
 		status = "stopped"
 	}
+	// Check if a rolling update is in progress — Progressing=True means K8s is
+	// actively replacing pods. During this window, Available=False with
+	// ReadyReplicas==0 is expected and should stay "pending", not "failed".
+	progressing := false
 	for _, cond := range dep.Status.Conditions {
-		if cond.Type == "Available" && cond.Status == "False" && dep.Status.ReadyReplicas == 0 {
+		if cond.Type == "Progressing" && cond.Status == "True" {
+			progressing = true
+		}
+	}
+	for _, cond := range dep.Status.Conditions {
+		if cond.Type == "Available" && cond.Status == "False" && dep.Status.ReadyReplicas == 0 && !progressing {
 			status = "failed"
 			if cond.Message != "" {
 				statusMessage = cond.Message

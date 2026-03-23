@@ -227,10 +227,11 @@ func (wc *WorkflowClient) StreamWorkflowLogs(ctx context.Context, project, workf
 		return pods.Items[i].CreationTimestamp.Before(&pods.Items[j].CreationTimestamp)
 	})
 
-	// Find the main/primary pod (usually the one doing the actual build)
-	// In Argo Workflows, look for pods not named with -wait suffix
+	// Find the most recent main/primary pod (not a -wait sidecar).
+	// Iterate newest-first so that retried workflows show the latest attempt,
+	// not a stale pod from an earlier failed step.
 	var target *corev1.Pod
-	for i := range pods.Items {
+	for i := len(pods.Items) - 1; i >= 0; i-- {
 		p := &pods.Items[i]
 		if !strings.HasSuffix(p.Name, "-wait") {
 			target = p
