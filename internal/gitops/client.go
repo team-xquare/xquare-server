@@ -568,6 +568,7 @@ func (c *Client) retryUpdate(project string, mutate func(*domain.Project) error,
 	if err != nil {
 		return err
 	}
+	var lastErr error
 	for i := 0; i < 3; i++ {
 		p, err := c.readProject(project)
 		if err != nil {
@@ -577,6 +578,7 @@ func (c *Client) retryUpdate(project string, mutate func(*domain.Project) error,
 			return err
 		}
 		if err := c.writeAndPush(repo, project, p, commitMsg); err != nil {
+			lastErr = err
 			if strings.Contains(err.Error(), "non-fast-forward") || strings.Contains(err.Error(), "conflict") {
 				log.Printf("WARN: git push conflict on attempt %d/3 for project %s, retrying: %v", i+1, project, err)
 				wt, _ := repo.Worktree()
@@ -588,7 +590,7 @@ func (c *Client) retryUpdate(project string, mutate func(*domain.Project) error,
 		}
 		return nil
 	}
-	return fmt.Errorf("failed after 3 retries due to git conflicts")
+	return fmt.Errorf("failed after 3 retries due to git conflicts: %w", lastErr)
 }
 
 func (c *Client) writeAndPush(repo *git.Repository, project string, p *domain.Project, commitMsg string) error {

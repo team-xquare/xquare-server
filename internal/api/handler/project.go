@@ -246,7 +246,7 @@ func (h *ProjectHandler) AddMember(c *gin.Context) {
 
 	if err := h.gitops.AddProjectMember(project, user.ID, c.GetString("username")); err != nil {
 		if strings.Contains(err.Error(), "already a member") {
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			c.JSON(http.StatusConflict, gin.H{"error": fmt.Sprintf("user %q is already a member of project %q", req.Username, project)})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
