@@ -230,21 +230,24 @@ func (h *AddonHandler) Connection(c *gin.Context) {
 	port := domain.AddonPort(addon.Type)
 	ready := h.k8s.AddonReady(c.Request.Context(), project, addonName, addon.Type)
 
-	password, err := h.k8s.GetAccessServerPassword(c.Request.Context(), project)
-	tunnelReady := err == nil
-	if err != nil {
-		log.Printf("warn: GetAccessServerPassword %s: %v", project, err)
-		password = ""
+	resp := gin.H{
+		"name":  addon.Name,
+		"type":  addon.Type,
+		"port":  port,
+		"ready": ready,
 	}
 
-	resp := gin.H{
-		"name":        addon.Name,
-		"type":        addon.Type,
-		"host":        "xquare-remote-access-" + project + ".dsmhs.kr",
-		"port":        port,
-		"password":    password,
-		"ready":       ready,
-		"tunnelReady": tunnelReady,
+	// Tunnel credentials are only relevant for TCP-tunnelable addons (mysql, postgresql, etc.).
+	// seaweedfs uses S3 protocol — including tunnel fields would mislead clients into
+	// attempting a WS tunnel connection that doesn't apply to S3 object storage.
+	if addon.Type != "seaweedfs" {
+		resp["host"] = "xquare-remote-access-" + project + ".dsmhs.kr"
+		password, err := h.k8s.GetAccessServerPassword(c.Request.Context(), project)
+		if err != nil {
+			log.Printf("warn: GetAccessServerPassword %s: %v", project, err)
+		}
+		resp["password"] = password
+		resp["tunnelReady"] = err == nil
 	}
 
 	if addon.Type == "seaweedfs" {
