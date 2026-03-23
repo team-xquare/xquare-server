@@ -155,7 +155,7 @@ func (h *AddonHandler) Update(c *gin.Context) {
 		}
 	}
 	if addon == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "addon not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("addon %q not found in project %q", addonName, project)})
 		return
 	}
 
@@ -218,7 +218,7 @@ func (h *AddonHandler) Connection(c *gin.Context) {
 		}
 	}
 	if addon == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "addon not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("addon %q not found in project %q", addonName, project)})
 		return
 	}
 

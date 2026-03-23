@@ -522,7 +522,7 @@ func (h *AppHandler) Tunnel(c *gin.Context) {
 		}
 	}
 	if !found {
-		c.JSON(http.StatusNotFound, gin.H{"error": "app not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("app %q not found in project %q", appName, project)})
 		return
 	}
 
