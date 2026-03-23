@@ -278,6 +278,10 @@ func (h *ProjectHandler) RemoveMember(c *gin.Context) {
 	}
 
 	if err := h.gitops.RemoveProjectMember(project, user.ID, c.GetString("username")); err != nil {
+		if strings.Contains(err.Error(), "not a member") {
+			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("user %q is not a member of project %q", targetUsername, project)})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
