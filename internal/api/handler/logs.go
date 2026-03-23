@@ -46,9 +46,12 @@ func (h *LogsHandler) Stream(c *gin.Context) {
 
 	tailLines := int64(100)
 	if t := c.Query("tail"); t != "" {
-		if n, err := strconv.ParseInt(t, 10, 64); err == nil {
-			tailLines = n
+		n, err := strconv.ParseInt(t, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid ?tail=%q: must be a positive integer (1-%d)", t, maxTailLines)})
+			return
 		}
+		tailLines = n
 	}
 	if tailLines > maxTailLines {
 		tailLines = maxTailLines

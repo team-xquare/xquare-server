@@ -129,12 +129,15 @@ func (h *BuildsHandler) StreamLogs(c *gin.Context) {
 	// Parse optional ?tail=N (default 500, max 2000)
 	tailLines := int64(500)
 	if tailStr := c.Query("tail"); tailStr != "" {
-		if n, err := strconv.ParseInt(tailStr, 10, 64); err == nil && n > 0 {
-			if n > 2000 {
-				n = 2000
-			}
-			tailLines = n
+		n, err := strconv.ParseInt(tailStr, 10, 64)
+		if err != nil || n < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid ?tail=%q: must be a positive integer (1-2000)", tailStr)})
+			return
 		}
+		if n > 2000 {
+			n = 2000
+		}
+		tailLines = n
 	}
 
 	// Validate workflow name to prevent K8s label selector injection.
