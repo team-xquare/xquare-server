@@ -261,10 +261,9 @@ func (c *Client) StreamPodLogs(ctx context.Context, project, app string, tailLin
 			if d, err := time.ParseDuration(since); err == nil && d > 0 {
 				secs := int64(d.Seconds())
 				logOpts.SinceSeconds = &secs
-				// When SinceSeconds is set, TailLines is not used by K8s — clear it
-				// so callers who expect "last N lines within the window" don't get
-				// surprised by an empty response when the window is large.
-				logOpts.TailLines = nil
+				// K8s supports SinceSeconds and TailLines simultaneously:
+				// returns the last TailLines lines from within the time window.
+				// Keep TailLines set so --since X --tail N behaves as expected.
 			}
 		}
 		req := c.cs.CoreV1().Pods(ns).GetLogs(target.Name, logOpts)
