@@ -737,7 +737,11 @@ func (h *AppHandler) Trigger(c *gin.Context) {
 	for _, a := range proj.Applications {
 		if a.Name == app {
 			appFound = true
-			sha, _ = h.github.GetBranchSHA(c.Request.Context(), a.GitHub.Owner, a.GitHub.Repo, a.GitHub.Branch)
+			var shaErr error
+			sha, shaErr = h.github.GetBranchSHA(c.Request.Context(), a.GitHub.Owner, a.GitHub.Repo, a.GitHub.Branch)
+			if shaErr != nil {
+				log.Printf("warn: GetBranchSHA %s/%s@%s: %v — build will use slow-path SHA resolution", a.GitHub.Owner, a.GitHub.Repo, a.GitHub.Branch, shaErr)
+			}
 			break
 		}
 	}
