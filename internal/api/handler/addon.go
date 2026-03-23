@@ -121,6 +121,11 @@ func (h *AddonHandler) Create(c *gin.Context) {
 		return
 	}
 
+	if addon.Type == "seaweedfs" && len(addon.Buckets) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "seaweedfs addon requires at least one bucket — without buckets the S3 API is disabled and the addon is unusable"})
+		return
+	}
+
 	if len(addon.Bootstrap) > maxBootstrapBytes {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("bootstrap must be less than %d bytes", maxBootstrapBytes)})
 		return
