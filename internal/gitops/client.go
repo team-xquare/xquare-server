@@ -2,6 +2,7 @@ package gitops
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -374,7 +375,7 @@ func (c *Client) AddProjectMember(project string, ownerID int64, actor string) e
 	return c.retryUpdate(project, func(p *domain.Project) error {
 		for _, id := range p.Owners {
 			if id == ownerID {
-				return nil // already a member
+				return fmt.Errorf("user %d is already a member of project %q", ownerID, project)
 			}
 		}
 		p.Owners = append(p.Owners, ownerID)
@@ -577,6 +578,7 @@ func (c *Client) retryUpdate(project string, mutate func(*domain.Project) error,
 		}
 		if err := c.writeAndPush(repo, project, p, commitMsg); err != nil {
 			if strings.Contains(err.Error(), "non-fast-forward") || strings.Contains(err.Error(), "conflict") {
+				log.Printf("WARN: git push conflict on attempt %d/3 for project %s, retrying: %v", i+1, project, err)
 				wt, _ := repo.Worktree()
 				_ = wt.Pull(&git.PullOptions{Auth: c.auth(), Force: true})
 				time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
