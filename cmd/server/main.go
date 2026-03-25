@@ -141,6 +141,8 @@ func main() {
 			admin.GET("/allowlist", allowlistH.List)
 			admin.POST("/allowlist", allowlistH.Add)
 			admin.DELETE("/allowlist/:username", allowlistH.Remove)
+			admin.GET("/users", allowlistH.ListUsers)
+			admin.GET("/users/:username", allowlistH.GetUser)
 		}
 
 		// Projects

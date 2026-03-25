@@ -73,6 +73,122 @@ func (h *AllowlistHandler) Add(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"id": ghUser.ID, "username": ghUser.Login})
 }
 
+type adminUser struct {
+	ID          int64    `json:"id"`
+	Username    string   `json:"username"`
+	InAllowlist bool     `json:"inAllowlist"`
+	Projects    []string `json:"projects"`
+}
+
+// GET /admin/users
+func (h *AllowlistHandler) ListUsers(c *gin.Context) {
+	if !h.isAdmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin only"})
+		return
+	}
+	allowedIDs, err := h.gitops.ListAllowedUsers()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	projectOwners, err := h.gitops.ListAllProjectOwners()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Build union of all user IDs
+	allowedSet := make(map[int64]struct{}, len(allowedIDs))
+	for _, id := range allowedIDs {
+		allowedSet[id] = struct{}{}
+	}
+	userProjects := make(map[int64][]string)
+	for project, owners := range projectOwners {
+		for _, id := range owners {
+			userProjects[id] = append(userProjects[id], project)
+		}
+	}
+	allIDs := make(map[int64]struct{}, len(allowedIDs))
+	for _, id := range allowedIDs {
+		allIDs[id] = struct{}{}
+	}
+	for id := range userProjects {
+		allIDs[id] = struct{}{}
+	}
+
+	ids := make([]int64, 0, len(allIDs))
+	for id := range allIDs {
+		ids = append(ids, id)
+	}
+	resolved := resolveUsernames(c, h.github, ids)
+
+	users := make([]adminUser, 0, len(resolved))
+	for _, r := range resolved {
+		_, inAllowlist := allowedSet[r.ID]
+		projects := userProjects[r.ID]
+		if projects == nil {
+			projects = []string{}
+		}
+		users = append(users, adminUser{
+			ID:          r.ID,
+			Username:    r.Username,
+			InAllowlist: inAllowlist,
+			Projects:    projects,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"users": users})
+}
+
+// GET /admin/users/:username
+func (h *AllowlistHandler) GetUser(c *gin.Context) {
+	if !h.isAdmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin only"})
+		return
+	}
+	username := c.Param("username")
+	ghUser, err := h.github.GetUserByUsername(c.Request.Context(), username)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "GitHub user not found"})
+		return
+	}
+	allowedIDs, err := h.gitops.ListAllowedUsers()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	projectOwners, err := h.gitops.ListAllProjectOwners()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	inAllowlist := false
+	for _, id := range allowedIDs {
+		if id == ghUser.ID {
+			inAllowlist = true
+			break
+		}
+	}
+	var projects []string
+	for project, owners := range projectOwners {
+		for _, id := range owners {
+			if id == ghUser.ID {
+				projects = append(projects, project)
+				break
+			}
+		}
+	}
+	if projects == nil {
+		projects = []string{}
+	}
+	c.JSON(http.StatusOK, adminUser{
+		ID:          ghUser.ID,
+		Username:    ghUser.Login,
+		InAllowlist: inAllowlist,
+		Projects:    projects,
+	})
+}
+
 // DELETE /admin/allowlist/:username
 // Resolves username → GitHub ID to avoid removing the wrong user if an account is renamed.
 func (h *AllowlistHandler) Remove(c *gin.Context) {

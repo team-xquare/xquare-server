@@ -219,6 +219,33 @@ func (c *Client) RemoveAllowedUser(actor string, githubID int64) error {
 	return c.writeAllowedUsers(actor, f)
 }
 
+// ListAllProjectOwners returns a map of project name → owner IDs for every project.
+// All reads happen inside a single mutex lock.
+func (c *Client) ListAllProjectOwners() (map[string][]int64, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, err := c.ensureRepo(); err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(filepath.Join(c.repoDir, "projects"))
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string][]int64, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name(), ".yaml")
+		p, err := c.readProject(name)
+		if err != nil {
+			continue
+		}
+		result[name] = p.Owners
+	}
+	return result, nil
+}
+
 // ListProjects returns all project names from projects/*.yaml
 func (c *Client) ListProjects() ([]string, error) {
 	c.mu.Lock()
