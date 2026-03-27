@@ -122,7 +122,7 @@ func main() {
 
 	// Rate limiters (shared instances — one bucket map per limiter)
 	authRL := middleware.RateLimitByIP(5, time.Minute)         // login: 5/min per IP
-	createRL := middleware.RateLimitByAccount(10, time.Hour)   // resource creation: 10/hr per account
+	createRL := middleware.RateLimitByAccount(30, time.Hour)   // resource creation: 30/hr per account
 	triggerRL := middleware.RateLimitByAccount(3, time.Minute) // CI trigger: 3/min per account
 
 	// Auth (public) — rate-limited by IP (no account available yet)
