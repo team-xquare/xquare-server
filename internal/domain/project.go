@@ -160,6 +160,7 @@ func AddonPort(addonType string) int {
 		"redis":         6379,
 		"mongodb":       27017,
 		"kafka":         9092,
+		"debezium":      8083,
 		"rabbitmq":      5672,
 		"opensearch":    9200,
 		"elasticsearch": 9200,
