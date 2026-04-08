@@ -56,7 +56,8 @@ func main() {
 	buildsH := handler.NewBuildsHandler(wfClient)
 	allowlistH := handler.NewAllowlistHandler(gitopsClient, githubClient, cfg.JWT.AdminIDs)
 
-	r := gin.Default()
+	r := gin.New()
+	r.Use(middleware.Logger(), gin.Recovery())
 
 	// Restrict trusted proxies to prevent X-Forwarded-For spoofing (rate limit bypass).
 	// Set TRUSTED_PROXIES env var to a comma-separated list of trusted proxy CIDRs/IPs
