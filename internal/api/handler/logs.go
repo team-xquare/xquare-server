@@ -118,17 +118,51 @@ func (h *LogsHandler) streamHTTP(c *gin.Context, project, app string, tailLines 
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Status(http.StatusOK)
 
-	scanner := bufio.NewScanner(rc)
-	scanner.Buffer(make([]byte, 512*1024), 512*1024) // match CLI buffer; default 64KB drops long Docker build lines
-	for scanner.Scan() {
-		line := scanner.Text()
-		c.Writer.WriteString(line + "\n")
-		c.Writer.Flush()
+	type lineResult struct {
+		text string
+		done bool
+	}
 
+	ctx := c.Request.Context()
+	lines := make(chan lineResult, 64)
+	go func() {
+		scanner := bufio.NewScanner(rc)
+		scanner.Buffer(make([]byte, 512*1024), 512*1024)
+		for scanner.Scan() {
+			select {
+			case lines <- lineResult{text: scanner.Text()}:
+			case <-ctx.Done():
+				return
+			}
+		}
 		select {
-		case <-c.Request.Context().Done():
+		case lines <- lineResult{done: true}:
+		case <-ctx.Done():
+		}
+	}()
+
+	// Cloudflare drops idle HTTP connections after ~100s. Send a blank keepalive
+	// line every 30s so the proxy sees activity even when the container is quiet.
+	var keepalive <-chan time.Time
+	if follow {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		keepalive = t.C
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
 			return
-		default:
+		case <-keepalive:
+			c.Writer.WriteString("\n")
+			c.Writer.Flush()
+		case r := <-lines:
+			if r.done {
+				return
+			}
+			c.Writer.WriteString(r.text + "\n")
+			c.Writer.Flush()
 		}
 	}
 }
